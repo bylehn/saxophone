@@ -1872,6 +1872,33 @@ extra = ["lxml (>=4.6)", "pydot (>=1.4.2)", "pygraphviz (>=1.10)", "sympy (>=1.1
 test = ["codecov (>=2.1)", "pytest (>=7.2)", "pytest-cov (>=4.0)"]
 
 [[package]]
+name = "nglview"
+version = "3.0.4"
+description = "IPython widget to interactively view molecular structures and trajectories."
+category = "main"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "nglview-3.0.4.tar.gz", hash = "sha256:e7ea100e77bfbf52bc89aaac5692da4358c86be4de103c78c34c76076f4bc9a8"},
+]
+
+[package.dependencies]
+ipywidgets = ">=7"
+jupyterlab_widgets = "*"
+numpy = "*"
+
+[package.extras]
+ase = ["ase"]
+htmd = ["htmd"]
+mdanalysis = ["MDAnalysis"]
+mdtraj = ["mdtraj"]
+parmed = ["parmed"]
+pytraj = ["pytraj"]
+qcelemental = ["qcelemental"]
+rdkit = ["rdkit"]
+simpletraj = ["simpletraj"]
+
+[[package]]
 name = "notebook"
 version = "6.5.4"
 description = "A web-based notebook environment for interactive computing"
@@ -3177,4 +3204,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "856826d311e16778139072c208473fa2c03b34c99c539682209b526d8f56f5ce"
+content-hash = "745b38f90b32a87eeee80bf551f0631d2a92a389be4341e975613ecef57c66c4"
