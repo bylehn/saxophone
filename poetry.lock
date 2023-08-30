@@ -1544,13 +1544,13 @@ tpu = ["jaxlib (==0.4.10)", "libtpu-nightly (==0.1.dev20230511)", "requests"]
 
 [[package]]
 name = "jax-md"
-version = "0.2.5"
+version = "0.2.8"
 description = "Differentiable, Hardware Accelerated, Molecular Dynamics"
 optional = false
 python-versions = ">=2.7"
 files = [
-    {file = "jax-md-0.2.5.tar.gz", hash = "sha256:2db242236ea7a1d1f2529c754c6106fc146e9beb7864983aaf695b345c9fa3e9"},
-    {file = "jax_md-0.2.5-py2.py3-none-any.whl", hash = "sha256:8a8b717ae775e2e301aa4b5e0986a4faf1c3dba0de9b04bd29385c7bb655cc19"},
+    {file = "jax-md-0.2.8.tar.gz", hash = "sha256:ad74e443c8e89933e38b0e2654b52f7f5aeabbd81a0934c765f09417eaa2e95b"},
+    {file = "jax_md-0.2.8-py3-none-any.whl", hash = "sha256:ca8dd37343a324151a89716b0fd39f67c0658c4f8da7ec52a250bc2c98e277dc"},
 ]
 
 [package.dependencies]
