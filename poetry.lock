@@ -1545,12 +1545,14 @@ tpu = ["jaxlib (==0.4.13)", "libtpu-nightly (==0.1.dev20230622)"]
 
 [[package]]
 name = "jax-md"
-version = "0.2.4"
-description = ""
+version = "0.2.8"
+description = "Differentiable, Hardware Accelerated, Molecular Dynamics"
 optional = false
 python-versions = ">=2.7"
-files = []
-develop = true
+files = [
+    {file = "jax-md-0.2.8.tar.gz", hash = "sha256:ad74e443c8e89933e38b0e2654b52f7f5aeabbd81a0934c765f09417eaa2e95b"},
+    {file = "jax_md-0.2.8-py3-none-any.whl", hash = "sha256:ca8dd37343a324151a89716b0fd39f67c0658c4f8da7ec52a250bc2c98e277dc"},
+]
 
 [package.dependencies]
 absl-py = "*"
@@ -1562,13 +1564,9 @@ flax = "*"
 jax = "*"
 jaxlib = "*"
 jraph = "*"
-ml_collections = "*"
+ml-collections = "*"
 numpy = "*"
 optax = "*"
-
-[package.source]
-type = "directory"
-url = "jax-md-jax-md-v0.2.24"
 
 [[package]]
 name = "jaxlib"
@@ -4697,4 +4695,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8.1,<4.0"
-content-hash = "4d8ef19d62d6c88358de910983a8c4e4acc985dcdcb71e47c929c41e6d0ed754"
+content-hash = "17d32c9416ba0ddbe4d2f3282e8f8908716d024095e3ba6760bc36aaa94a4f6c"
