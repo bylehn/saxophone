@@ -156,7 +156,7 @@ def get_mass(N, G):
     
     return M
 
-def createCompatibility(N, X, E):
+def createCompatibility(N, X, E, m, G):
     N_b = E.shape[0]
     mdict = dict(zip(range(N), m))
     nx.set_node_attributes(G, mdict, 'Mass')
@@ -287,7 +287,7 @@ def scaleBondImportance(bond_importance):
     return bi_centred/onp.max(onp.abs(bi_centred))
 
 
-def getForbiddenModesCompressed(R,M, w_c, dw, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0):
+def getForbiddenModesCompressed(R, M, m, G, N, w_c, dw, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every):
     """
     Get the forbidden modes when compressing the network.
 
@@ -302,15 +302,15 @@ def getForbiddenModesCompressed(R,M, w_c, dw, k_bond, k_angle, shift, surface_no
     R_final: final positions
     log: log dictionary
     """
-    poisson, log, R_init, R_final = simulate_auxetic(R, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, optimize = False)
-    C_init=createCompatibility(N,R_init,E)
-    C_final=createCompatibility(N,R_final,E)
+    poisson, log, R_init, R_final = simulate_auxetic(R, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every, optimize = False)
+    C_init=createCompatibility(N,R_init,E, m, G)
+    C_final=createCompatibility(N,R_final,E, m, G)
     D_init, V_init, forbidden_states_init = getForbiddenModes(C_init, k_bond, M, w_c, dw)
     D_final, V_final, forbidden_states_final = getForbiddenModes(C_final, k_bond, M, w_c, dw)
     return D_init, V_init, forbidden_states_init,R_init, D_final, V_final, forbidden_states_final, R_final,log
 
 
-def optimizeAgeingCompression(R, M, w_c, dw, N_trials,ageing_rate,success_frac, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0):
+def optimizeAgeingCompression(R, M, m, G, N, w_c, dw, N_trials,ageing_rate,success_frac, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every):
     """
     Optimize for acoustic bandgap when compressing the network.
 
@@ -322,18 +322,18 @@ def optimizeAgeingCompression(R, M, w_c, dw, N_trials,ageing_rate,success_frac, 
     w_range=[w_c-dw/2,w_c+dw/2]
     D_range = [x**2 for x in w_range]
 
-    _, _, forbidden_states_init_0,_, _, _, forbidden_states_final_0, _,_=getForbiddenModesCompressed(R,M, w_c, dw, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0)
+    _, _, forbidden_states_init_0,_, _, _, forbidden_states_final_0, _,_=getForbiddenModesCompressed(R,M, m, G, N, w_c, dw, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every)
 
     if forbidden_states_init_0*forbidden_states_final_0==0:
         return k,1,0
     for trial in range(1, N_trials+1):
 
-        D_init, V_init, forbidden_states_init,R_init, D_final, V_final, forbidden_states_final, R_final,log=getForbiddenModesCompressed(R,M, w_c, dw, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0)
-        C_init=createCompatibility(N,R_init,E)
-        C_final=createCompatibility(N,R_final,E)
+        D_init, V_init, forbidden_states_init,R_init, D_final, V_final, forbidden_states_final, R_final,log=getForbiddenModesCompressed(R,M, m, G, N, w_c, dw, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every)
+        C_init=createCompatibility(N,R_init,E, m, G)
+        C_final=createCompatibility(N,R_final,E, m, G)
         k_bond=ageSpringsCompressed(k_bond,R_init,C_init,D_init, V_init, R_final,C_final, D_final, V_final,D_range,ageing_rate)
 
-        _, _, forbidden_states_init,_, _, _, forbidden_states_final, _,_=getForbiddenModesCompressed(R,M, w_c, dw, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0)
+        _, _, forbidden_states_init,_, _, _, forbidden_states_final, _,_=getForbiddenModesCompressed(R,M, m, G, N, w_c, dw, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every)
 
         print(trial,forbidden_states_init,forbidden_states_final)
 
