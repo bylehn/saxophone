@@ -4,163 +4,160 @@ import numpy as onp
 import networkx as nx
 from scipy.spatial import Delaunay
 from jax import vmap
-from jax import jit
+from jax import jit]
+from jax import random  
 from jax.config import config; config.update("jax_enable_x64", True)
 from jax_md import quantity, space
 
 
 # %%
-def createDelaunayGraph(NS, rseed, r_c, del_x):
-    """
-    This function creates a Delaunay graph of a set of points.
+class System:
+    def __init__(self, nr_points, random_seed, r_circle, dx, k_angle):
+        self.nr_points = nr_points
+        self.random_seed = random_seed
+        self.r_circle = r_circle
+        self.dx = dx
+        self.k_angle = k_angle
 
-    NS: The number of points to generate.
-    rseed: The random seed to use.
-    r_c: The radius of the circumcircle of each edge in the graph.
-    del_x: max noise magnitude from square lattice
+        # Initialize attributes
+        self.N = None
+        self.G = None
+        self.X = None
+        self.E = None
+        self.L = None
+        self.surface_nodes = None  
+        self.mass = None
+        self.spring_constants = None
+        self.distances = None
+        self.angle_triplets = None
+        self.initial_angles = None
 
-    Returns:
-    N: The number of points in the graph.
-    G: The graph object.
-    X: The coordinates of the points.
-    E: The edges of the graph.
-    """
+# %%
+    def create_delaunay_graph(self):
+        # Initialize JAX PRNGKey
+        key = random.PRNGKey(self.random_seed)
 
-    # Set the random seed.
-    onp.random.seed(rseed)
+        # Generate the points
+        xm, ym = np.meshgrid(np.arange(1, self.nr_points + 1), np.arange(1, self.nr_points + 1))
+        X = np.vstack((xm.flatten(), ym.flatten())).T
+        N = X.shape[0]
 
-    # Generate the points.
-    xm, ym = onp.meshgrid(onp.arange(1, NS + 1), onp.arange(1, NS + 1))
-    X = onp.vstack((xm.flatten(), ym.flatten())).T
-    N = X.shape[0]
+        # Split the key for the next random operation
+        key, subkey = random.split(key)
 
-    # Add some noise to the points.
-    X = X + del_x * 2 * (0.5 - onp.random.rand(N, 2))
+        # Add noise to the points
+        noise = self.dx * 2 * (0.5 - random.uniform(subkey, (N, 2)))
+        X = X + noise
 
-    # Create the Delaunay triangulation.
-    DT = Delaunay(X)
+        # Convert to numpy array for Delaunay triangulation
+        X_np = onp.array(X)
 
-    # Get the edges of the triangulation.
-    ET = onp.empty((0, 2), dtype=int)
-    for T in DT.simplices:
-        ET = onp.vstack((ET, [T[0], T[1]], [T[1], T[2]], [T[0], T[2]]))
+        # Create the Delaunay triangulation
+        DT = Delaunay(X_np)
 
-    # Sort the edges.
-    ET = onp.sort(ET)
+        # Process the edges
+        ET = onp.empty((0, 2), dtype=int)
+        for T in DT.simplices:
+            ET = onp.vstack((ET, [T[0], T[1]], [T[1], T[2]], [T[0], T[2]]))
 
-    # Get the radii of the circumcircles of the edges.
-    R = onp.linalg.norm(X[ET[:, 0], :] - X[ET[:, 1], :], axis=1)
+        ET = onp.sort(ET)
 
-    # Keep only the edges with radii less than r_c.
-    EN = ET[R < r_c, :]
+        # Calculate edge radii and lengths
+        R = onp.linalg.norm(X_np[ET[:, 0], :] - X_np[ET[:, 1], :], axis=1)
+        EN = ET[R < self.r_circle, :]
+        A = onp.zeros((N, N))
+        A[EN[:, 0], EN[:, 1]] = 1
+        L = onp.linalg.norm(X_np[ET[:, 0], :] - X_np[ET[:, 1], :], axis=1)
+        EL = L[R < self.r_circle]
 
-    # Create the adjacency matrix.
-    A = onp.zeros((N, N))
-    A[EN[:, 0], EN[:, 1]] = 1
+        # Create the graph object
+        G = nx.Graph(A)
+        E = onp.array(G.edges)
+        L = onp.linalg.norm(X_np[E[:, 0], :] - X_np[E[:, 1], :], axis=1)
 
-    # Get the lengths of the edges.
-    L = onp.linalg.norm(X[ET[:, 0], :] - X[ET[:, 1], :], axis=1)
+        # Store results as attributes
+        self.N = N
+        self.G = G
+        self.X = X_np
+        self.E = E
+        self.L = L
+        self.get_surface_nodes()
+        self.get_mass()
+        
+    def get_surface_nodes(self):
+        """
+        Get the nodes on each surface of the graph and store them in self.surface_nodes.
 
-    # Keep only the edges with lengths less than r_c.
-    EL = L[R < r_c]
+        Output: Updates self.surface_nodes with a dictionary containing surface nodes.
+        """
+        if self.G is None:
+            raise ValueError("Graph not created. Call createDelaunayGraph first.")
 
-    # Create the graph object.
-    G = nx.Graph(A)
+        nodes = np.array(list(self.G.nodes))
+        x_values = nodes % self.nr_points
+        y_values = nodes // self.nr_points
 
-    # Get the edges of the graph.
-    E = onp.array(G.edges)
+        top_nodes = nodes[y_values == self.nr_points - 1]
+        bottom_nodes = nodes[y_values == 0]
+        left_nodes = nodes[x_values == 0]
+        right_nodes = nodes[x_values == self.nr_points - 1]
 
-    # Get the lengths of the edges.
-    L = onp.linalg.norm(X[E[:, 0], :] - X[E[:, 1], :], axis=1)
+        # Store the result in self.surface_nodes
+        self.surface_nodes = {
+            'top': top_nodes,
+            'bottom': bottom_nodes,
+            'left': left_nodes,
+            'right': right_nodes
+        }
 
-    return N, G, X, E, L
+    def get_mass(self):
+        """
+        Calculate the mass matrix and store it in self.M.
+        """
+        if self.G is None or self.N is None:
+            raise ValueError("Graph not created. Call createDelaunayGraph first.")
 
-def getSurfaceNodes(G, NS):
-    """
-    Get the nodes on each surface of the graph.
+        m = onp.ones(self.N)
+        mdict = dict(zip(range(self.N), m))
+        nx.set_node_attributes(self.G, mdict, 'Mass')
 
-    G: graph object
-    NS: grid size
+        m2 = onp.zeros(2 * self.N)
+        m2[0:2 * self.N:2] = m
+        m2[1:2 * self.N:2] = m
+        self.mass = onp.diag(m2)
 
-    output: dictionary with surface names as keys and node arrays as values
-    """
-    # Retrieve the list of nodes in the graph G
-    nodes = np.array(list(G.nodes))
-    # Calculate the x and y coordinates of the nodes based on the grid size NS
-    x_values = nodes % NS
-    y_values = nodes // NS
-    # Find the nodes located on the top surface (y = NS - 1)
-    top_nodes = nodes[y_values == NS - 1]
-    # Find the nodes located on the bottom surface (y = 0)
-    bottom_nodes = nodes[y_values == 0]
-    # Find the nodes located on the left surface (x = 0)
-    left_nodes = nodes[x_values == 0]
-    # Find the nodes located on the right surface (x = NS - 1)
-    right_nodes = nodes[x_values == NS - 1]
-    # Return a dictionary with surface names as keys and node arrays as values
-    return {
-        'top': top_nodes,
-        'bottom': bottom_nodes,
-        'left': left_nodes,
-        'right': right_nodes
-    }
+    def create_spring_constants(self, k_1=1.0):
+        """
+        Creates spring constants for each edge in the graph based on current state.
 
+        Output: Updates self.spring_constants and self.distances.
+        """
+        if self.X is None or self.E is None:
+            raise ValueError("Graph properties not set. Call createDelaunayGraph first.")
 
-def make_box(R, padding):
-    """
-    Defines a box length
+        displacements = self.X[self.E[:, 0], :] - self.X[self.E[:, 1], :]
+        distances = np.linalg.norm(displacements, axis=1)
+        self.spring_constants = (k_1 / distances).reshape(-1, 1)
+        self.distances = distances
 
-    R: position matrix
-    padding: amount of space to add to the box
+    @jit
+    def compute_distance(point1, point2):
+        """
+        Calculate the Euclidean distance between two points.
+        """
+        return np.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
+    
+    def calculate_angle_triplets_method(self):
+        """
+        Wrapper method to calculate the triplets of nodes that form angles.
+        """
+        self.angle_triplets = calculate_angle_triplets(self.E)  
 
-    output: box length
-    """
-    box_length = (np.max((np.max(R[:,0], R[:,1])) - np.min(((np.min(R[:,0], R[:,1])))))) + padding
-    return box_length
-
-def create_spring_constants(R,E,k_1):
-    """
-    Creates spring constants for each edge in the graph
-
-    k_1: spring constant for a spring of unit length
-    R: position matrix
-    E: edge matrix
-
-    output: spring constants, distances
-    """
-    displacements = R[E[:, 0],:] - R[E[:, 1], :]
-    distance = np.linalg.norm(displacements, axis=1)
-    return (k_1/distance).reshape(-1,1), distance
-
-@jit
-def compute_distance(point1, point2):
-    """
-    Calculate the Euclidean distance between two points.
-    """
-    return np.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
-
-
-#@jit
-def constrained_force_fn(R, energy_fn, mask):
-    """
-    Calculates forces with frozen edges.
-
-    R: position matrix
-    energy_fn: energy function
-    mask: mask for frozen edges
-
-    output: total force with frozen edges
-    """
-
-
-    def new_force_fn(R):
-        force_fn = quantity.force(energy_fn)
-        total_force = force_fn(R)
-        total_force *= mask
-        return total_force
-
-    return new_force_fn
-
+    def calculate_initial_angles_method(self):
+        """
+        Wrapper method to calculate the initial angles for each triplet of nodes.
+        """
+        self.initial_angles = calculate_initial_angles(self, displacement_fn)
 
 @jit
 def fitness(poisson):
@@ -203,10 +200,6 @@ def update_kbonds(gradients, k_bond, learning_rate = 0.01):
     k_bond_new = k_bond * (1 - learning_rate * gradients_normalized)
 
     return k_bond_new
-
-@jit
-def compute_force_norm(fire_state):
-    return np.linalg.norm(fire_state.force)
 
 
 def remove_zero_rows(log_dict):
@@ -277,34 +270,3 @@ def calculate_initial_angles(positions, displacement_fn, E, angle_triplets_data)
     
     angles = vmap(angle)(angle_triplets_data)
     return angles
-
-
-def angle_energy(displacement_fn, k, theta_0, triplet, positions):
-    """
-    Calculates the harmonic angle energy for a triplet of nodes.
-
-    displacement_fn: displacement function
-    k: spring constants
-    theta_0: equilibrium angles
-    triplet: triplet of nodes
-    positions: position matrix
-
-    output: harmonic angle energy
-    """
-    i, j, k = triplet
-    pi = np.take(positions, i, axis=0)
-    pj = np.take(positions, j, axis=0)
-    pk = np.take(positions, k, axis=0)
-    theta = compute_angle_between_triplet(displacement_fn, pi, pj, pk)
-    return 0.5 * k * (theta - theta_0)**2
-
-# Assume angle_triplets is an array of shape (num_angles, 3)
-# Each row in angle_triplets represents a set of indices (i, j, k)
-
-# Vectorize the function
-vectorized_angle_energy = vmap(angle_energy, in_axes=(None, None, 0, 0, None))
-
-# Usage during simulation
-#current_positions = ... # Update this during your simulation
-#theta_0 = calculate_initial_angles(initial_positions, displacement_fn, E)
-#total_angle_energy = np.sum(vectorized_angle_energy(displacement_fn, k, theta_0, angle_triplets_data, current_positions))

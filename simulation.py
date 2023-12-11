@@ -6,23 +6,26 @@ from jax import jit, vmap
 from jax import lax
 import networkx as nx
 import utils
+import energies
 
 
-def simulate_auxetic(R, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every, optimize=True):
+def simulate_auxetic(R,
+                     system,
+                     shift,
+                     perturbation, delta_perturbation,
+                     displacement,
+                     steps, write_every,
+                     optimize=True):
     """
-    Simulates the auxetic process.
+    Simulates the auxetic process using a System instance.
 
-    R: position matrix
-    k_bond: bond spring constant
-    k_angle: angle spring constant
+    system: System instance containing the state and properties of the system
     shift: shift parameter for the FIRE minimization
-    surface_nodes: dictionary of surface nodes
     perturbation: total perturbation
     delta_perturbation: perturbation step size
     displacement: displacement function
-    E: edge matrix
-    bond_lengths: bond lengths
-    theta0: equilibrium angle
+    steps: number of steps in the simulation
+    write_every: frequency of writing data
     optimize: boolean to indicate whether to optimize the poisson ratio
 
     Returns:
@@ -30,13 +33,13 @@ def simulate_auxetic(R, k_bond, k_angle, shift, surface_nodes, perturbation, del
     log: log dictionary
     R_init: initial positions
     R_final: final positions
-
     """
+
     # Get the surface nodes.
-    top_indices = surface_nodes['top']
-    bottom_indices = surface_nodes['bottom']
-    left_indices = surface_nodes['left']
-    right_indices = surface_nodes['right']
+    top_indices = system.surface_nodes['top']
+    bottom_indices = system.surface_nodes['bottom']
+    left_indices = system.surface_nodes['left']
+    right_indices = system.surface_nodes['right']
     mask = np.ones(R.shape)
     mask = mask.at[left_indices].set(0)
     mask = mask.at[right_indices].set(0)
@@ -81,7 +84,7 @@ def simulate_auxetic(R, k_bond, k_angle, shift, surface_nodes, perturbation, del
         R_perturbed = R_current.at[left_indices, 0].add(delta_perturbation)
         cumulative_perturbation += delta_perturbation
         # Update the force function with the new positions
-        force_fn = utils.constrained_force_fn(R_perturbed, energy_fn_wrapper, mask)
+        force_fn = energies.constrained_force_fn(R_perturbed, energy_fn_wrapper, mask)
 
         # Reinitialize the fire state with the new positions and updated force function
         fire_init, fire_apply = minimize.fire_descent(force_fn, shift)
@@ -99,16 +102,15 @@ def simulate_auxetic(R, k_bond, k_angle, shift, surface_nodes, perturbation, del
 
         return R_perturbed, log, cumulative_perturbation
 
-    def energy_fn(R, E, k_angle, theta0, k_bond, bond_lengths, **kwargs):
-        angle_triplets_data = utils.calculate_angle_triplets(E)
-        angle_energy = np.sum(utils.vectorized_angle_energy(displacement, k_angle, theta0, angle_triplets_data, R))
+    def energy_fn(R, system, **kwargs):
+        angle_energy = np.sum(energies.vectorized_angle_energy(system, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
-        bond_energy = energy.simple_spring_bond(displacement, E, length=bond_lengths, epsilon=k_bond[:, 0])(R, **kwargs)
+        bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.L, epsilon=system.spring_constants[:, 0])(R, **kwargs)
 
         return bond_energy + angle_energy
 
     def energy_fn_wrapper(R, **kwargs):
-        return energy_fn(R, E, k_angle, theta0, k_bond, bond_lengths, **kwargs)
+        return energy_fn(R, system, **kwargs)
 
     R_init = R
     # Initial dimensions (before deformation)
@@ -144,17 +146,6 @@ def getBondImportance(X,C,V,D,D_range):
     bond_importance_normalized=bond_importance_centered/onp.max(onp.abs(bond_importance_centered))
     
     return bond_importance_normalized.reshape(-1,1)
-
-def get_mass(N, G):
-    m = onp.ones(N)
-    mdict=dict(zip(range(N), m))
-    nx.set_node_attributes(G,mdict,'Mass')
-    m2 = onp.zeros(2 * N)
-    m2[0:2 * N:2] = m
-    m2[1:2 * N:2] = m
-    M = onp.diag(m2)
-    
-    return M
 
 def createCompatibility(N, X, E, m, G):
     N_b = E.shape[0]
