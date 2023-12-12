@@ -4,7 +4,7 @@ import numpy as onp
 import networkx as nx
 from scipy.spatial import Delaunay
 from jax import vmap
-from jax import jit]
+from jax import jit
 from jax import random  
 from jax.config import config; config.update("jax_enable_x64", True)
 from jax_md import quantity, space
@@ -31,8 +31,27 @@ class System:
         self.distances = None
         self.angle_triplets = None
         self.initial_angles = None
+        self.displacement = None
+        self.shift = None
 
 # %%
+
+    def initialize(self):
+        """
+        Initializes the system by setting up the graph, calculating necessary properties,
+        and preparing the system for simulation.
+        """
+        self.create_delaunay_graph()
+        R = self.X
+        displacement, shift = space.free()
+        self.displacement = displacement
+        self.shift = shift
+        self.get_mass()
+        self.create_spring_constants()
+        self.calculate_angle_triplets_method()
+        self.calculate_initial_angles_method(displacement)
+        
+
     def create_delaunay_graph(self):
         # Initialize JAX PRNGKey
         key = random.PRNGKey(self.random_seed)
@@ -153,11 +172,12 @@ class System:
         """
         self.angle_triplets = calculate_angle_triplets(self.E)  
 
-    def calculate_initial_angles_method(self):
+    def calculate_initial_angles_method(self, displacement_fn):
         """
         Wrapper method to calculate the initial angles for each triplet of nodes.
         """
-        self.initial_angles = calculate_initial_angles(self, displacement_fn)
+
+        self.initial_angles = calculate_initial_angles(self.X,  self.angle_triplets, displacement_fn)
 
 @jit
 def fitness(poisson):
@@ -250,7 +270,7 @@ def compute_angle_between_triplet(displacement_fn, pi, pj, pk):
     return np.arccos(np.clip(cos_theta, -1.0, 1.0))
 
 
-def calculate_initial_angles(positions, displacement_fn, E, angle_triplets_data):
+def calculate_initial_angles(positions,  angle_triplets_data, displacement_fn):
     """
     Calculates the initial angles for each triplet of nodes.
 

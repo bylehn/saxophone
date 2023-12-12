@@ -2,6 +2,7 @@ import jax.numpy as np
 from jax import vmap
 from utils import compute_angle_between_triplet
 from jax_md import quantity
+from jax import jit
 
 def constrained_force_fn(R, energy_fn, mask):
     """
@@ -27,7 +28,7 @@ def constrained_force_fn(R, energy_fn, mask):
 def compute_force_norm(fire_state):
     return np.linalg.norm(fire_state.force)
 
-def angle_energy(system, displacement_fn, positions):
+def angle_energy(system, triplets, displacement_fn, positions):
     """
     Calculates the harmonic angle energy for a triplet of nodes.
 
@@ -39,7 +40,7 @@ def angle_energy(system, displacement_fn, positions):
 
     output: harmonic angle energy
     """
-    i, j, k = system.angle_triplets
+    i, j, k = triplets
     pi = np.take(positions, i, axis=0)
     pj = np.take(positions, j, axis=0)
     pk = np.take(positions, k, axis=0)
@@ -50,7 +51,7 @@ def angle_energy(system, displacement_fn, positions):
 # Each row in angle_triplets represents a set of indices (i, j, k)
 
 # Vectorize the function
-vectorized_angle_energy = vmap(angle_energy, in_axes=(None, None, 0, 0, None))
+vectorized_angle_energy = vmap(angle_energy, in_axes=(None, 0, None , None))
 
 # Usage during simulation
 #current_positions = ... # Update this during your simulation
