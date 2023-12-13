@@ -33,6 +33,12 @@ class System:
         self.initial_angles = None
         self.displacement = None
         self.shift = None
+        # Acoustic properties
+        self.m = np.ones(self.N)
+        self.frequency_center = None
+        self.frequency_width = None
+        self.ageing_rate = None
+
 
 # %%
 

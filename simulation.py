@@ -7,9 +7,24 @@ from jax import lax
 import networkx as nx
 import utils
 import energies
+from collections import namedtuple
+
+Result_forbidden_modes = namedtuple('Result', [
+    'D_init',
+    'V_init',
+    'forbidden_states_init',
+    'R_init',
+    'D_final',
+    'V_final',
+    'forbidden_states_final',
+    'R_final',
+    'log'
+])
+
 
 
 def simulate_auxetic(R,
+                     k_bond,
                      system,
                      shift,
                      perturbation, delta_perturbation,
@@ -105,7 +120,7 @@ def simulate_auxetic(R,
     def energy_fn(R, system, **kwargs):
         angle_energy = np.sum(energies.vectorized_angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
-        bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.L, epsilon=system.spring_constants[:, 0])(R, **kwargs)
+        bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.L, epsilon=k_bond[:, 0])(R, **kwargs)
 
         return bond_energy + angle_energy
 
@@ -136,27 +151,27 @@ def simulate_auxetic(R,
     else: return poisson, log, R_init, R_final
 
 
-def getBondImportance(X,C,V,D,D_range):
-    modes = onp.where((D > D_range[0]) & (D < D_range[1]))[0]
-    delta_E=C.T@V
-    EC=delta_E[:,modes]
-    bond_importance=onp.mean(np.abs(EC),axis=1)
-    bond_importance=bond_importance/onp.max(bond_importance)
-    bond_importance_centered=bond_importance-onp.mean(bond_importance)
-    bond_importance_normalized=bond_importance_centered/onp.max(onp.abs(bond_importance_centered))
+def get_bond_importance(C, V, D, D_range):
+    modes = np.where((D > D_range[0]) & (D < D_range[1]))[0]
+    delta_E = C.T@V
+    EC = delta_E[:, modes]
+    bond_importance = np.mean(np.abs(EC), axis=1)
+    bond_importance = bond_importance/np.max(bond_importance)
+    bond_importance_centered = bond_importance - np.mean(bond_importance)
+    bond_importance_normalized = bond_importance_centered/np.max(np.abs(bond_importance_centered))
     
     return bond_importance_normalized.reshape(-1,1)
 
-def createCompatibility(N, X, E, m, G):
-    N_b = E.shape[0]
-    mdict = dict(zip(range(N), m))
-    nx.set_node_attributes(G, mdict, 'Mass')
+def create_compatibility(system, R):
+    N_b = system.E.shape[0]
+    mdict = dict(zip(range(system.N), system.m))
+    nx.set_node_attributes(system.G, mdict, 'Mass')
 
     # Initialize C with zeros
-    C = np.zeros((2 * N, N_b))
+    C = np.zeros((2 * system.N, N_b))
     
     # Compute the b_vec for each edge
-    b_vec = X[E[:, 0], :] - X[E[:, 1], :]
+    b_vec = R[system.E[:, 0], :] - R[system.E[:, 1], :]
     b_vec_norm = np.linalg.norm(b_vec, axis=1, keepdims=True)
     b_vec_normalized = b_vec / b_vec_norm
 
@@ -165,12 +180,12 @@ def createCompatibility(N, X, E, m, G):
 
     # Update C using the .at property for advanced indexing
     for i in range(N_b):
-        C = C.at[2 * E[i, 0]:2 * E[i, 0] + 2, i].add(b_vec_normalized[i])
-        C = C.at[2 * E[i, 1]:2 * E[i, 1] + 2, i].add(-b_vec_normalized[i])
+        C = C.at[2 * system.E[i, 0]:2 * system.E[i, 0] + 2, i].add(b_vec_normalized[i])
+        C = C.at[2 * system.E[i, 1]:2 * system.E[i, 1] + 2, i].add(-b_vec_normalized[i])
 
     return C
 
-def getForbiddenModes(C, k, M, w_c, dw):
+def get_forbidden_states(C, k_bond, system):
     """
     Get the forbidden modes for a given spring constant k.
 
@@ -185,15 +200,16 @@ def getForbiddenModes(C, k, M, w_c, dw):
     V: eigenvectors
     forbidden_states: number of forbidden states
     """
-    kd = onp.diag(onp.squeeze(k))
+    kd = np.diag(np.squeeze(k_bond))
     K = C @ kd @ C.T
-    DMAT = np.linalg.inv(M) @ K
+    DMAT = np.linalg.inv(system.mass) @ K
     D, V = onp.linalg.eig(DMAT)
-    D = onp.real(D)
-    w=onp.sqrt(onp.abs(D))
-    forbidden_states=onp.sum(onp.logical_and(w>w_c-dw/2,w<w_c+dw/2))
-    V=onp.real(V)
-    return D, V,forbidden_states
+    D = np.real(D)
+    frequency = np.sqrt(np.abs(D))
+    forbidden_states = np.sum(onp.logical_and(frequency > system.frequency_center - system.frequency_width/2,
+                                              frequency < system.frequency_center + system.frequency_width/2))
+    V = np.real(V)
+    return D, V, forbidden_states
 
 def ageSprings(k_old,X,C,V,D,D_range,ageing_rate):
     """
@@ -251,34 +267,40 @@ def optimizeAgeing(C, k, M, w_c, dw, N_trials,ageing_rate,success_frac):
 
     return k,0,trial
 
-def ageSpringsCompressed(k_old,R_init,C_init,D_init, V_init, R_final,C_final, D_final, V_final,D_range,ageing_rate):
+def age_springs_compressed(k_old, system, result, C_init, C_final, D_range):
     """
     Aging algorithm for springs when doing compression.
 
     Returns:
     k_new: new spring constant matrix
     """
-    bond_importance_init=scaleBondImportance(getBondImportance(R_init,C_init,V_init,D_init,D_range))
-    bond_importance_final=scaleBondImportance(getBondImportance(R_final,C_final,V_final, D_final,D_range))
+    bond_importance_init = scale_bond_importance(get_bond_importance(C_init, result.V_init, result.D_init, D_range))
+    bond_importance_final = scale_bond_importance(get_bond_importance(C_final, result.V_final, result.D_final, D_range))
 
     bond_importance_difference = bond_importance_final#-bond_importance_init
 
-    k_new=k_old*(1+2*ageing_rate*bond_importance_difference)
+    k_new = k_old * (1 + 2*system.ageing_rate * bond_importance_difference)
     return k_new
 
-def scaleBondImportance(bond_importance):
+def scale_bond_importance(bond_importance):
     """
     Scales the bond importance vector. 
 
     Returns:
-    scaled bond importance vector
+    scaled bond importance vector centered at 0 and max extents -1 to 1
     """
     #returns the vector centred at mean = 0 and max extents -1 to 1
-    bi_centred = bond_importance-onp.mean(bond_importance)
-    return bi_centred/onp.max(onp.abs(bi_centred))
+    bi_centered = bond_importance - np.mean(bond_importance)
+    return bi_centered/np.max(np.abs(bi_centered))
 
-
-def getForbiddenModesCompressed(R, M, m, G, N, w_c, dw, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every):
+def forbidden_states_compression(R,
+                                 k_bond,
+                                 system,
+                                 shift,
+                                 perturbation, delta_perturbation,
+                                 displacement,
+                                 steps, write_every
+    ):
     """
     Get the forbidden modes when compressing the network.
 
@@ -293,15 +315,32 @@ def getForbiddenModesCompressed(R, M, m, G, N, w_c, dw, k_bond, k_angle, shift, 
     R_final: final positions
     log: log dictionary
     """
-    poisson, log, R_init, R_final = simulate_auxetic(R, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every, optimize = False)
-    C_init=createCompatibility(N,R_init,E, m, G)
-    C_final=createCompatibility(N,R_final,E, m, G)
-    D_init, V_init, forbidden_states_init = getForbiddenModes(C_init, k_bond, M, w_c, dw)
-    D_final, V_final, forbidden_states_final = getForbiddenModes(C_final, k_bond, M, w_c, dw)
-    return D_init, V_init, forbidden_states_init,R_init, D_final, V_final, forbidden_states_final, R_final,log
+    _, log, R_init, R_final = simulate_auxetic(R,
+                                               k_bond,
+                                               system,
+                                               shift,
+                                               perturbation, delta_perturbation,
+                                               displacement,
+                                               steps, write_every,
+                                               optimize=False)
+    C_init = create_compatibility(system, R_init)
+    C_final = create_compatibility(system, R_final)
+    D_init, V_init, forbidden_states_init = get_forbidden_states(C_init, k_bond, system)
+    D_final, V_final, forbidden_states_final = get_forbidden_states(C_final, k_bond, system)
+
+    return Result_forbidden_modes(D_init,
+                                  V_init,
+                                  forbidden_states_init,
+                                  R_init,
+                                  D_final,
+                                  V_final,
+                                  forbidden_states_final,
+                                  R_final,
+                                  log
+    )
 
 
-def optimizeAgeingCompression(R, M, m, G, N, w_c, dw, N_trials,ageing_rate,success_frac, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every):
+def optimize_ageing_compression(R, system, N_trials, success_frac, k_bond, shift, perturbation, delta_perturbation, displacement, steps, write_every):
     """
     Optimize for acoustic bandgap when compressing the network.
 
@@ -310,26 +349,51 @@ def optimizeAgeingCompression(R, M, m, G, N, w_c, dw, N_trials,ageing_rate,succe
     success: success boolean
     trial: trial number
     """
-    w_range=[w_c-dw/2,w_c+dw/2]
-    D_range = [x**2 for x in w_range]
+    frequency_range=[system.frequency_center - system.frequency_width/2,
+                     system.frequency_center + system.frequency_width/2]
+    
+    D_range = [x**2 for x in frequency_range]
 
-    _, _, forbidden_states_init_0,_, _, _, forbidden_states_final_0, _,_=getForbiddenModesCompressed(R,M, m, G, N, w_c, dw, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every)
-
-    if forbidden_states_init_0*forbidden_states_final_0==0:
-        return k,1,0
+    result = forbidden_states_compression(R,
+                                          k_bond,
+                                          system,
+                                          shift,
+                                          perturbation, delta_perturbation,
+                                          displacement,
+                                          steps, write_every
+    )
+    
+    forbidden_states_init_0 = result.forbidden_states_init
+    forbidden_states_final_0 = result.forbidden_states_final
+    if forbidden_states_init_0 * forbidden_states_final_0 == 0:
+        return k, 1, 0
+    
     for trial in range(1, N_trials+1):
 
-        D_init, V_init, forbidden_states_init,R_init, D_final, V_final, forbidden_states_final, R_final,log=getForbiddenModesCompressed(R,M, m, G, N, w_c, dw, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every)
-        C_init=createCompatibility(N,R_init,E, m, G)
-        C_final=createCompatibility(N,R_final,E, m, G)
-        k_bond=ageSpringsCompressed(k_bond,R_init,C_init,D_init, V_init, R_final,C_final, D_final, V_final,D_range,ageing_rate)
+        result = forbidden_states_compression(R,
+                                              k_bond,
+                                              system,
+                                              shift,
+                                              perturbation, delta_perturbation,
+                                              displacement,
+                                              steps, write_every
+        )   
+        C_init = create_compatibility(system, result.R_init)
+        C_final = create_compatibility(system, result.R_final)
+        k_bond = age_springs_compressed(k_bond, system, result, C_init, C_final, D_range)
 
-        _, _, forbidden_states_init,_, _, _, forbidden_states_final, _,_=getForbiddenModesCompressed(R,M, m, G, N, w_c, dw, k_bond, k_angle, shift, surface_nodes, perturbation, delta_perturbation, displacement, E, bond_lengths, theta0, steps, write_every)
+        result = forbidden_states_compression(R,
+                                              k_bond,
+                                              system,
+                                              shift,
+                                              perturbation, delta_perturbation,
+                                              displacement,
+                                              steps, write_every
+        )
 
-        print(trial,forbidden_states_init,forbidden_states_final)
+        print(trial, result.forbidden_states_init, result.forbidden_states_final)
 
-        if forbidden_states_final<=success_frac*forbidden_states_final_0:
+        if result.forbidden_states_final <= success_frac*forbidden_states_final_0:
+            return k_bond, 1, trial
 
-            return k_bond, 1,trial
-
-    return k_bond,0,trial
+    return k_bond, 0, trial
