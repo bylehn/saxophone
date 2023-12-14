@@ -27,10 +27,8 @@ def simulate_auxetic(R,
                      k_bond,
                      system,
                      shift,
-                     perturbation, delta_perturbation,
-                     displacement,
-                     steps, write_every,
-                     optimize=True):
+                     displacement
+                     ):
     """
     Simulates the auxetic process using a System instance.
 
@@ -58,15 +56,13 @@ def simulate_auxetic(R,
     mask = np.ones(R.shape)
     mask = mask.at[left_indices].set(0)
     mask = mask.at[right_indices].set(0)
-    num_iterations = int(np.ceil(perturbation / delta_perturbation))
-    #print(num_iterations)
-
-
+    num_iterations = int(np.ceil(system.perturbation / system.delta_perturbation))
+    # Initialize the cumulative perturbation
     cumulative_perturbation = 0.0
 
     log = {
-            'force': np.zeros((num_iterations*(steps // write_every),) + R.shape),
-            'position': np.zeros((num_iterations*(steps // write_every),) + R.shape),
+            'force': np.zeros((num_iterations*(system.steps // system.write_every),) + R.shape),
+            'position': np.zeros((num_iterations*(system.steps // system.write_every),) + R.shape),
     }
 
     def step_fn_generator(apply, start_idx):
@@ -79,13 +75,13 @@ def simulate_auxetic(R,
             """
             fire_state, log = state_and_log
             i_adjusted = i + start_idx
-            log['force'] = lax.cond(i_adjusted % write_every == 0,
-                                        lambda p: p.at[i_adjusted // write_every].set(fire_state.force),
+            log['force'] = lax.cond(i_adjusted % system.write_every == 0,
+                                        lambda p: p.at[i_adjusted // system.write_every].set(fire_state.force),
                                         lambda p: p,
                                         log['force'])
 
-            log['position'] = lax.cond(i_adjusted % write_every == 0,
-                                            lambda p: p.at[i_adjusted // write_every].set(fire_state.position),
+            log['position'] = lax.cond(i_adjusted % system.write_every == 0,
+                                            lambda p: p.at[i_adjusted // system.write_every].set(fire_state.position),
                                             lambda p: p,
                                             log['position'])
 
@@ -96,8 +92,8 @@ def simulate_auxetic(R,
 
     def perturb_and_minimize(i, state_log_perturb):
         R_current, log, cumulative_perturbation = state_log_perturb
-        R_perturbed = R_current.at[left_indices, 0].add(delta_perturbation)
-        cumulative_perturbation += delta_perturbation
+        R_perturbed = R_current.at[left_indices, 0].add(system.delta_perturbation)
+        cumulative_perturbation += system.delta_perturbation
         # Update the force function with the new positions
         force_fn = energies.constrained_force_fn(R_perturbed, energy_fn_wrapper, mask)
 
@@ -107,12 +103,12 @@ def simulate_auxetic(R,
 
         # Update step function generator with the new start index
 
-        start_idx = i * (steps // write_every)
+        start_idx = i * (system.steps // system.write_every)
 
         step_fn = step_fn_generator(fire_apply, start_idx)
 
         # Perform the minimization step
-        fire_state, log = lax.fori_loop(0, steps, step_fn, (fire_state, log))
+        fire_state, log = lax.fori_loop(0, system.steps, step_fn, (fire_state, log))
         R_perturbed = fire_state.position
 
         return R_perturbed, log, cumulative_perturbation
@@ -146,9 +142,31 @@ def simulate_auxetic(R,
     poisson = utils.poisson_ratio(initial_horizontal, initial_vertical, final_horizontal, final_vertical)
     #fit = fitness(poisson)
 
-    if optimize:
-        return poisson
-    else: return poisson, log, R_init, R_final
+    return poisson, log, R_init, R_final
+
+def simulate_auxetic_optimize(R,
+                     k_bond,
+                     system,
+                     shift,
+                     displacement
+                     ):
+    """
+    Simulates the auxetic process using a System instance.
+
+    R: position matrix  
+    k_bond: spring constant matrix
+    system: System instance containing the state and properties of the system   
+    shift: shift parameter for the FIRE minimization
+    displacement: displacement function             
+
+    Returns:
+    poisson: poisson ratio
+
+    """             
+    poisson, _, _, _ = simulate_auxetic(R, k_bond, system, shift, displacement)
+
+    return poisson
+
 
 
 def get_bond_importance(C, V, D, D_range):
@@ -297,9 +315,7 @@ def forbidden_states_compression(R,
                                  k_bond,
                                  system,
                                  shift,
-                                 perturbation, delta_perturbation,
                                  displacement,
-                                 steps, write_every
     ):
     """
     Get the forbidden modes when compressing the network.
@@ -319,10 +335,9 @@ def forbidden_states_compression(R,
                                                k_bond,
                                                system,
                                                shift,
-                                               perturbation, delta_perturbation,
-                                               displacement,
-                                               steps, write_every,
-                                               optimize=False)
+                                               displacement
+                                               )
+    
     C_init = create_compatibility(system, R_init)
     C_final = create_compatibility(system, R_final)
     D_init, V_init, forbidden_states_init = get_forbidden_states(C_init, k_bond, system)
@@ -340,7 +355,7 @@ def forbidden_states_compression(R,
     )
 
 
-def optimize_ageing_compression(R, system, N_trials, success_frac, k_bond, shift, perturbation, delta_perturbation, displacement, steps, write_every):
+def optimize_ageing_compression(R, system, k_bond, shift, displacement):
     """
     Optimize for acoustic bandgap when compressing the network.
 
@@ -358,26 +373,22 @@ def optimize_ageing_compression(R, system, N_trials, success_frac, k_bond, shift
                                           k_bond,
                                           system,
                                           shift,
-                                          perturbation, delta_perturbation,
-                                          displacement,
-                                          steps, write_every
+                                          displacement
     )
     
     forbidden_states_init_0 = result.forbidden_states_init
     forbidden_states_final_0 = result.forbidden_states_final
     if forbidden_states_init_0 * forbidden_states_final_0 == 0:
-        return k, 1, 0
+        return k_bond, 1, 0
     
-    for trial in range(1, N_trials+1):
+    for trial in range(1, system.nr_trials+1):
 
         result = forbidden_states_compression(R,
                                               k_bond,
                                               system,
                                               shift,
-                                              perturbation, delta_perturbation,
-                                              displacement,
-                                              steps, write_every
-        )   
+                                              displacement)
+        
         C_init = create_compatibility(system, result.R_init)
         C_final = create_compatibility(system, result.R_final)
         k_bond = age_springs_compressed(k_bond, system, result, C_init, C_final, D_range)
@@ -386,14 +397,12 @@ def optimize_ageing_compression(R, system, N_trials, success_frac, k_bond, shift
                                               k_bond,
                                               system,
                                               shift,
-                                              perturbation, delta_perturbation,
-                                              displacement,
-                                              steps, write_every
+                                              displacement
         )
 
         print(trial, result.forbidden_states_init, result.forbidden_states_final)
 
-        if result.forbidden_states_final <= success_frac*forbidden_states_final_0:
+        if result.forbidden_states_final <= system.success_fraction*forbidden_states_final_0:
             return k_bond, 1, trial
 
     return k_bond, 0, trial

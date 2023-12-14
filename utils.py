@@ -34,10 +34,17 @@ class System:
         self.displacement = None
         self.shift = None
         # Acoustic properties
-        self.m = np.ones(self.N)
+        self.m = None
         self.frequency_center = None
         self.frequency_width = None
-        self.ageing_rate = None
+        self.ageing_rate = 0.01
+        self.success_fraction = 0.05
+        self.nr_trials = None
+        # Auxetic properties
+        self.perturbation = 1.
+        self.delta_perturbation = 0.1
+        self.steps = 50
+        self.write_every = 1
 
 
 # %%
@@ -53,10 +60,30 @@ class System:
         self.displacement = displacement
         self.shift = shift
         self.get_mass()
+        self.m = np.ones(self.N)
         self.create_spring_constants()
         self.calculate_angle_triplets_method()
         self.calculate_initial_angles_method(displacement)
+        self.get_surface_nodes()
         
+    def auxetic_parameters(self, perturbation=1., delta_perturbation=0.1, steps=50, write_every=1):
+        """
+        Sets the parameters for the auxetic simulation.
+        """
+        self.perturbation = perturbation
+        self.delta_perturbation = delta_perturbation
+        self.steps = steps
+        self.write_every = write_every
+
+    def acoustic_parameters(self, frequency_center, frequency_width, nr_trials, ageing_rate=0.01, success_fraction=0.05):
+        """
+        Sets the parameters for the acoustic simulation.
+        """
+        self.frequency_center = frequency_center
+        self.frequency_width = frequency_width
+        self.nr_trials = nr_trials
+        self.ageing_rate = ageing_rate
+        self.success_fraction = success_fraction
 
     def create_delaunay_graph(self):
         # Initialize JAX PRNGKey
