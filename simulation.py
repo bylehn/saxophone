@@ -229,7 +229,7 @@ def get_forbidden_states(C, k_bond, system):
     V = np.real(V)
     return D, V, forbidden_states
 
-def ageSprings(k_old,X,C,V,D,D_range,ageing_rate):
+def age_springs(k_old, system, D, V, C, D_range):
     """
     Aging algorithm for springs.
 
@@ -244,11 +244,11 @@ def ageSprings(k_old,X,C,V,D,D_range,ageing_rate):
     Returns:
     k_new: new spring constant matrix
     """
-    bond_importance=getBondImportance(X,C,V,D,D_range)
-    k_new=onp.multiply(k_old,(1+2*ageing_rate*bond_importance))
+    bond_importance = get_bond_importance(C, V, D, D_range)
+    k_new = k_old * (1 + 2 * system.ageing_rate * bond_importance)
     return k_new
 
-def optimizeAgeing(C, k, M, w_c, dw, N_trials,ageing_rate,success_frac):
+def optimize_ageing(C, k, system, success_frac):
     """
     Optimize for acoustic bandgap.
 
@@ -267,23 +267,26 @@ def optimizeAgeing(C, k, M, w_c, dw, N_trials,ageing_rate,success_frac):
     trial: trial number
     """
 
-    w_range=[w_c-dw/2,w_c+dw/2]
-    D_range = [x**2 for x in w_range]
-    D, V, forbidden_states_initial = getForbiddenModes(C, k, M, w_c, dw)
-    if forbidden_states_initial==0:
+    frequency_range=[system.frequency_center - system.frequency_width/2,
+                     system.frequency_center + system.frequency_width/2]
+    
+    D_range = [x**2 for x in frequency_range]
+
+    D, V, forbidden_states_initial = get_forbidden_states(C, k, system)
+    if forbidden_states_initial == 0:
         return k,1,0
-    for trial in range(1, N_trials+1):
+    for trial in range(1, system.nr_trials + 1):
 
-        k=ageSprings(k,X,C,V,D,D_range,ageing_rate)
+        k = age_springs(k, system, D, V, C, D_range)
 
-        D, V, forbidden_states = getForbiddenModes(C, k, M, w_c, dw)
+        D, V, forbidden_states = get_forbidden_states(C, k, system)
         print(trial,forbidden_states)
 
-        if forbidden_states<=success_frac*forbidden_states_initial:
+        if forbidden_states <= success_frac * forbidden_states_initial:
 
-            return k, 1,trial
+            return k, 1, trial
 
-    return k,0,trial
+    return k, 0, trial
 
 def age_springs_compressed(k_old, system, result, C_init, C_final, D_range):
     """
@@ -292,16 +295,31 @@ def age_springs_compressed(k_old, system, result, C_init, C_final, D_range):
     Returns:
     k_new: new spring constant matrix
     """
+    threshold = 0.2  # Define a threshold for importance increase
+    penalty_factor = 0.1  # Factor to penalize increasing importance in initial state
+
     bond_importance_init = scale_bond_importance(get_bond_importance(C_init, result.V_init, result.D_init, D_range))
     bond_importance_final = scale_bond_importance(get_bond_importance(C_final, result.V_final, result.D_final, D_range))
 
     # Calculate the ratio of forbidden states (add 1 to initial to avoid division by zero)
-    forbidden_states_ratio = (result.forbidden_states_final + 1) / (result.forbidden_states_init + 1)
+    #forbidden_states_ratio = (result.forbidden_states_init + 1) / (result.forbidden_states_final + 1)
 
+    # Calculate the differential importance
+    differential_importance = bond_importance_final - bond_importance_init
+
+    # Adjust the differential importance to avoid increasing initial forbidden modes
+        # Strengthen or weaken springs based on differential importance
+    adjustment_factors = np.where(differential_importance > threshold, 
+                                  1 + system.ageing_rate * differential_importance, 
+                                   0 + 1) # Strengthen
+                                  #1 - penalty_factor * system.ageing_rate * differential_importance) 
     # Adjust bond importance based on the ratio
-    bond_importance_adjusted = bond_importance_final * forbidden_states_ratio - bond_importance_init
+   # bond_importance_adjusted = bond_importance_final  #-  forbidden_states_ratio * bond_importance_init
     
-    k_new = k_old * (1 + system.ageing_rate * bond_importance_adjusted)
+    # Apply adjustments while maintaining a similar distribution
+    k_new = k_old * adjustment_factors
+    #k_new = adjust_distribution(k_new, k_old)  # Function to maintain distribution
+    #k_new = k_old * (1 + 2*system.ageing_rate * differential_importance)
     return k_new
 
 def scale_bond_importance(bond_importance):
@@ -369,40 +387,31 @@ def optimize_ageing_compression(R, system, k_bond, shift, displacement):
     trial: trial number
     """
 
-    best_ratio = 0
-    optimized_k_bond = k_bond
-
     frequency_range=[system.frequency_center - system.frequency_width/2,
                      system.frequency_center + system.frequency_width/2]
     
     D_range = [x**2 for x in frequency_range]
 
-    result = forbidden_states_compression(R,
-                                          k_bond,
-                                          system,
-                                          shift,
-                                          displacement
-    )
     
     for trial in range(1, system.nr_trials + 1):
 
+        current_k_bond = k_bond
+
         result = forbidden_states_compression(R,
-                                              k_bond,
+                                              current_k_bond,
                                               system,
                                               shift,
                                               displacement)
 
-        current_ratio = (result.forbidden_states_final + 1) / (result.forbidden_states_init + 1)
-        # Check if the current ratio is the best found so far
-        if current_ratio > best_ratio:
-            best_ratio = current_ratio
-            optimized_k_bond = k_bond  # Update the best spring constants found
+        if result.forbidden_states_init >= 1 and result.forbidden_states_final == 0:
+            return current_k_bond, 1, trial  # Optimization successful
 
         
         C_init = create_compatibility(system, result.R_init)
         C_final = create_compatibility(system, result.R_final)
-        k_bond = age_springs_compressed(k_bond, system, result, C_init, C_final, D_range)
 
-        print(trial, result.forbidden_states_init, result.forbidden_states_final, current_ratio)
+        k_bond = age_springs_compressed(current_k_bond, system, result, C_init, C_final, D_range)
 
-    return optimized_k_bond, best_ratio
+        print(trial, result.forbidden_states_init, result.forbidden_states_final)
+
+    return current_k_bond, 0, trial  # Optimization did not meet the criteria

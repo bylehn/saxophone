@@ -4,6 +4,8 @@ import networkx as nx
 from matplotlib.animation import FuncAnimation
 from IPython.display import HTML, display
 import jax.numpy as np
+import numpy as onp
+import simulation
 sns.set_style(style='white')
 
 def format_plot(x, y):
@@ -90,7 +92,7 @@ def makemovie_bondwidth(N, G, k, traj, amp=1., xylims=9., stride=10):
     plt.show()
     return ani
 
-def makemovieDOS(N, G, E, M, k, traj, w_c, dw,stride=10):
+def makemovieDOS(system, k, traj,stride=10):
 
     # Set style
     sns.set_style(style='white')
@@ -105,8 +107,8 @@ def makemovieDOS(N, G, E, M, k, traj, w_c, dw,stride=10):
     def update(frame):
         plt.clf()  # Clear the current figure
         R_plt = traj['position'][frame]
-        C=createCompatibility(N,R_plt,E)
-        D, V, forbidden_states = getForbiddenModes(C, k, M, w_c, dw)
+        C = simulation.create_compatibility(system, R_plt)
+        D, V, forbidden_states = simulation.get_forbidden_states(C, k, system)
         plt.hist(onp.sqrt(onp.abs(D)), bins=onp.arange(-0.025, 4.025, 0.05), density=False)
         plt.xlabel(r'$\omega$')
         plt.ylabel(r'$\rho(\omega)$')
