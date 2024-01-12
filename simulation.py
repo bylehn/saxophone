@@ -114,7 +114,7 @@ def simulate_auxetic(R,
         return R_perturbed, log, cumulative_perturbation
 
     def energy_fn(R, system, **kwargs):
-        angle_energy = np.sum(energies.vectorized_angle_energy(system, system.angle_triplets, displacement, R))
+        angle_energy = 0 #np.sum(energies.vectorized_angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.L, epsilon=k_bond[:, 0])(R, **kwargs)
 
@@ -295,7 +295,7 @@ def age_springs_compressed(k_old, system, result, C_init, C_final, D_range):
     Returns:
     k_new: new spring constant matrix
     """
-    threshold = 0.2  # Define a threshold for importance increase
+    threshold = 0.05  # Define a threshold for importance increase
     penalty_factor = 0.1  # Factor to penalize increasing importance in initial state
 
     bond_importance_init = scale_bond_importance(get_bond_importance(C_init, result.V_init, result.D_init, D_range))
@@ -311,8 +311,8 @@ def age_springs_compressed(k_old, system, result, C_init, C_final, D_range):
         # Strengthen or weaken springs based on differential importance
     adjustment_factors = np.where(differential_importance > threshold, 
                                   1 + system.ageing_rate * differential_importance, 
-                                   0 + 1) # Strengthen
-                                  #1 - penalty_factor * system.ageing_rate * differential_importance) 
+                                #   0 + 1) # Strengthen
+                                  1 - penalty_factor * system.ageing_rate * differential_importance) 
     # Adjust bond importance based on the ratio
    # bond_importance_adjusted = bond_importance_final  #-  forbidden_states_ratio * bond_importance_init
     

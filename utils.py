@@ -238,7 +238,7 @@ def poisson_ratio(initial_horizontal, initial_vertical, final_horizontal, final_
     return -delta_vertical / delta_horizontal
 
 @jit
-def update_kbonds(gradients, k_bond, learning_rate = 0.01):
+def update_kbonds(gradients, k_bond, learning_rate = 0.1):
     """
     Updates spring constants based on gradients.
 

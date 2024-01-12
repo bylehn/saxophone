@@ -56,7 +56,7 @@ def makemovie(N, G, traj, amp, xylims, stride=10):
     plt.show()
     return ani
 
-def makemovie_bondwidth(N, G, k, traj, amp=1., xylims=9., stride=10):
+def makemovie_bondwidth(system, k, traj, amp=1., xylims=9., stride=10):
 
     # Set style
     sns.set_style(style='white')
@@ -75,8 +75,8 @@ def makemovie_bondwidth(N, G, k, traj, amp=1., xylims=9., stride=10):
         R_0 = traj['position'][0]
         R_plt = R_0 + amp * (R_plt - R_0)
 
-        pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(N)}
-        nx.draw_networkx_edges(G, pos, width=2*k, alpha=0.6,edge_color='k')
+        pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
+        nx.draw_networkx_edges(system.G, pos, width=2*k, alpha=0.6,edge_color='k')
         plt.xlim([0, xylims])
         plt.ylim([0, xylims])
 
