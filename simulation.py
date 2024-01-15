@@ -114,7 +114,7 @@ def simulate_auxetic(R,
         return R_perturbed, log, cumulative_perturbation
 
     def energy_fn(R, system, **kwargs):
-        angle_energy = 0 #np.sum(energies.vectorized_angle_energy(system, system.angle_triplets, displacement, R))
+        angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.L, epsilon=k_bond[:, 0])(R, **kwargs)
 
