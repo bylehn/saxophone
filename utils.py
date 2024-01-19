@@ -145,7 +145,7 @@ class System:
         if self.G is None:
             raise ValueError("Graph not created. Call createDelaunayGraph first.")
 
-        nodes = np.array(list(self.G.nodes))
+        nodes = onp.array(list(self.G.nodes))
         x_values = nodes % self.nr_points
         y_values = nodes // self.nr_points
 
