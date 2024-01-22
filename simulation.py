@@ -306,10 +306,13 @@ def age_springs_compressed(k_old, system, result, C_init, C_final, D_range):
     """
     threshold = 0.05  # Define a threshold for importance increase
     penalty_factor = 0.1  # Factor to penalize increasing importance in initial state
-
+    debug.print("C_final = {C_final}", C_final=C_final)
+    debug.print("result.V_final = {result.V_final}", result=result)
+    debug.print("result.D_final = {result.D_final}", result=result)
     bond_importance_init = scale_bond_importance(get_bond_importance(C_init, result.V_init, result.D_init, D_range))
     bond_importance_final = scale_bond_importance(get_bond_importance(C_final, result.V_final, result.D_final, D_range))
-
+    debug.print("{bond_importance_init}", bond_importance_init=bond_importance_init)
+    debug.print("{bond_importance_final}", bond_importance_final=bond_importance_final)
     # Calculate the ratio of forbidden states (add 1 to initial to avoid division by zero)
     #forbidden_states_ratio = (result.forbidden_states_init + 1) / (result.forbidden_states_final + 1)
 
@@ -418,9 +421,10 @@ def optimize_ageing_compression(R, system, k_bond, shift, displacement):
         C_init = create_compatibility(system, result.R_init)
         C_final = create_compatibility(system, result.R_final)
         k_bond_updated = age_springs_compressed(current_k_bond, system, result, C_init, C_final, D_range)
+        # Check if any entry in k_bond is NaN
 
         debug.print("{k_bond_updated}", k_bond_updated=k_bond_updated)
-        print(trial, result.forbidden_states_init, result.forbidden_states_final)
+        #print(trial, result.forbidden_states_init, result.forbidden_states_final)
         debug.print("{trial}", trial=trial)
 
         # Update carry values, note that `k_bond_updated` is only used if the loop continues.
@@ -433,3 +437,9 @@ def optimize_ageing_compression(R, system, k_bond, shift, displacement):
 
 
     return final_k_bond, final_trial, forbidden_states_init, forbidden_states_final
+
+def raise_error(_):
+    raise ValueError("Found NaN in k_bond, stopping the code.")
+
+def no_op(_):
+    return

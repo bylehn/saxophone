@@ -76,7 +76,7 @@ def makemovie_bondwidth(system, k, traj, amp=1., xylims=9., stride=10):
         R_plt = R_0 + amp * (R_plt - R_0)
 
         pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
-        nx.draw_networkx_edges(system.G, pos, width=2*k, alpha=0.6,edge_color='k')
+        nx.draw_networkx_edges(system.G, pos, width=1*k, alpha=0.6,edge_color='k')
         plt.xlim([0, xylims])
         plt.ylim([0, xylims])
 
