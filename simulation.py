@@ -372,6 +372,8 @@ def forbidden_states_compression(R,
                                                displacement
                                                )
     
+    debug.print("R_init = {R_init}", R_init=R_init)
+    debug.print("R_final = {R_final}", R_final=R_final)
     C_init = create_compatibility(system, R_init)
     C_final = create_compatibility(system, R_final)
     D_init, V_init, forbidden_states_init = get_forbidden_states(C_init, k_bond, system)

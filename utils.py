@@ -300,7 +300,7 @@ def compute_angle_between_triplet(displacement_fn, pi, pj, pk):
     u_ij = d_ij / space.distance(d_ij)
     u_kj = d_kj / space.distance(d_kj)
     cos_theta = np.dot(u_ij, u_kj)
-    return np.arccos(np.clip(cos_theta, -1.0, 1.0))
+    return np.arccos(np.clip(cos_theta, -0.999, 0.999))
 
 
 def calculate_initial_angles(positions,  angle_triplets_data, displacement_fn):
