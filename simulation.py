@@ -232,7 +232,8 @@ def get_forbidden_states(C, k_bond, system):
     kd = np.diag(np.squeeze(k_bond))
     K = C @ kd @ C.T
     DMAT = np.linalg.inv(system.mass) @ K
-    D, V = np.linalg.eig(DMAT)
+    #debug.print("DMAT: {DMAT}", DMAT=DMAT)
+    D, V = np.linalg.eigh(DMAT)
     D = np.real(D)
     frequency = np.sqrt(np.abs(D))
     forbidden_states = np.sum(np.logical_and(frequency > system.frequency_center - system.frequency_width/2,
