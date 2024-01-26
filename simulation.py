@@ -4,6 +4,7 @@ from jax.config import config; config.update("jax_enable_x64", True)
 from jax_md import energy, minimize
 from jax import jit, vmap
 from jax import lax
+from jax import debug
 import networkx as nx
 import utils
 import energies
@@ -12,10 +13,12 @@ from collections import namedtuple
 Result_forbidden_modes = namedtuple('Result', [
     'D_init',
     'V_init',
+    'C_init',
     'forbidden_states_init',
     'R_init',
     'D_final',
     'V_final',
+    'C_final',
     'forbidden_states_final',
     'R_final',
     'log'
@@ -56,13 +59,13 @@ def simulate_auxetic(R,
     mask = np.ones(R.shape)
     mask = mask.at[left_indices].set(0)
     mask = mask.at[right_indices].set(0)
-    num_iterations = int(np.ceil(system.perturbation / system.delta_perturbation))
+    num_iterations = int(onp.ceil(system.perturbation / system.delta_perturbation))
     # Initialize the cumulative perturbation
     cumulative_perturbation = 0.0
 
     log = {
-            'force': np.zeros((num_iterations*(system.steps // system.write_every),) + R.shape),
-            'position': np.zeros((num_iterations*(system.steps // system.write_every),) + R.shape),
+            'force': onp.zeros((num_iterations*(system.steps // system.write_every),) + R.shape),
+            'position': onp.zeros((num_iterations*(system.steps // system.write_every),) + R.shape)
     }
 
     def step_fn_generator(apply, start_idx):
@@ -114,7 +117,7 @@ def simulate_auxetic(R,
         return R_perturbed, log, cumulative_perturbation
 
     def energy_fn(R, system, **kwargs):
-        angle_energy = np.sum(energies.vectorized_angle_energy(system, system.angle_triplets, displacement, R))
+        angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.L, epsilon=k_bond[:, 0])(R, **kwargs)
 
@@ -127,16 +130,16 @@ def simulate_auxetic(R,
     # Initial dimensions (before deformation)
     # Exclude the first and last index for horizontal edges (top and bottom)
     # as these are corners with the left and right edges
-    initial_horizontal = np.mean(R_init[right_indices[1:-1]], axis=0)[0] - np.mean(R_init[left_indices[1:-1]], axis=0)[0]
+    initial_horizontal = onp.mean(R_init[right_indices[1:-1]], axis=0)[0] - onp.mean(R_init[left_indices[1:-1]], axis=0)[0]
 
     # Exclude the first and last index for vertical edges (left and right)
     # as these are corners with the top and bottom edges
-    initial_vertical = np.mean(R_init[top_indices[1:-1]], axis=0)[1] - np.mean(R_init[bottom_indices[1:-1]], axis=0)[1]
+    initial_vertical = onp.mean(R_init[top_indices[1:-1]], axis=0)[1] - onp.mean(R_init[bottom_indices[1:-1]], axis=0)[1]
 
     R_final, log, cumulative_perturbation = lax.fori_loop(0, num_iterations, perturb_and_minimize, (R_init, log, cumulative_perturbation))
     # Final dimensions (after deformation)
-    final_horizontal = np.mean(R_final[right_indices[1:-1]], axis=0)[0] - np.mean(R_final[left_indices[1:-1]], axis=0)[0]
-    final_vertical = np.mean(R_final[top_indices[1:-1]], axis=0)[1] - np.mean(R_final[bottom_indices[1:-1]], axis=0)[1]
+    final_horizontal = onp.mean(R_final[right_indices[1:-1]], axis=0)[0] - onp.mean(R_final[left_indices[1:-1]], axis=0)[0]
+    final_vertical = onp.mean(R_final[top_indices[1:-1]], axis=0)[1] - onp.mean(R_final[bottom_indices[1:-1]], axis=0)[1]
 
     # Calculate the poisson ratio.
     poisson = utils.poisson_ratio(initial_horizontal, initial_vertical, final_horizontal, final_vertical)
@@ -170,10 +173,18 @@ def simulate_auxetic_optimize(R,
 
 
 def get_bond_importance(C, V, D, D_range):
-    modes = np.where((D > D_range[0]) & (D < D_range[1]))[0]
-    delta_E = C.T@V
-    EC = delta_E[:, modes]
-    bond_importance = np.mean(np.abs(EC), axis=1)
+    # Create a mask for the modes within the specified range
+    # Create a mask for the modes within the specified range
+    mode_mask = ((D > D_range[0]) & (D < D_range[1])).astype(float)
+    
+    # Compute delta_E for all modes, irrespective of the mask
+    delta_E_all_modes = np.dot(C.T, V)
+
+    # Apply mask to delta_E to zero out the modes outside the range
+    delta_E = delta_E_all_modes * mode_mask
+
+    # Compute bond importance using vmap for element-wise operations
+    bond_importance = vmap(lambda ec: np.mean(np.abs(ec)))(delta_E)
     bond_importance = bond_importance/np.max(bond_importance)
     bond_importance_centered = bond_importance - np.mean(bond_importance)
     bond_importance_normalized = bond_importance_centered/np.max(np.abs(bond_importance_centered))
@@ -221,15 +232,16 @@ def get_forbidden_states(C, k_bond, system):
     kd = np.diag(np.squeeze(k_bond))
     K = C @ kd @ C.T
     DMAT = np.linalg.inv(system.mass) @ K
-    D, V = onp.linalg.eig(DMAT)
+    #debug.print("DMAT: {DMAT}", DMAT=DMAT)
+    D, V = np.linalg.eigh(DMAT)
     D = np.real(D)
     frequency = np.sqrt(np.abs(D))
-    forbidden_states = np.sum(onp.logical_and(frequency > system.frequency_center - system.frequency_width/2,
+    forbidden_states = np.sum(np.logical_and(frequency > system.frequency_center - system.frequency_width/2,
                                               frequency < system.frequency_center + system.frequency_width/2))
     V = np.real(V)
     return D, V, forbidden_states
 
-def ageSprings(k_old,X,C,V,D,D_range,ageing_rate):
+def age_springs(k_old, system, D, V, C, D_range):
     """
     Aging algorithm for springs.
 
@@ -244,11 +256,11 @@ def ageSprings(k_old,X,C,V,D,D_range,ageing_rate):
     Returns:
     k_new: new spring constant matrix
     """
-    bond_importance=getBondImportance(X,C,V,D,D_range)
-    k_new=onp.multiply(k_old,(1+2*ageing_rate*bond_importance))
+    bond_importance = get_bond_importance(C, V, D, D_range)
+    k_new = k_old * (1 + 2 * system.ageing_rate * bond_importance)
     return k_new
 
-def optimizeAgeing(C, k, M, w_c, dw, N_trials,ageing_rate,success_frac):
+def optimize_ageing(C, k, system, success_frac):
     """
     Optimize for acoustic bandgap.
 
@@ -267,23 +279,26 @@ def optimizeAgeing(C, k, M, w_c, dw, N_trials,ageing_rate,success_frac):
     trial: trial number
     """
 
-    w_range=[w_c-dw/2,w_c+dw/2]
-    D_range = [x**2 for x in w_range]
-    D, V, forbidden_states_initial = getForbiddenModes(C, k, M, w_c, dw)
-    if forbidden_states_initial==0:
+    frequency_range=[system.frequency_center - system.frequency_width/2,
+                     system.frequency_center + system.frequency_width/2]
+    
+    D_range = [x**2 for x in frequency_range]
+
+    D, V, forbidden_states_initial = get_forbidden_states(C, k, system)
+    if forbidden_states_initial == 0:
         return k,1,0
-    for trial in range(1, N_trials+1):
+    for trial in range(1, system.nr_trials + 1):
 
-        k=ageSprings(k,X,C,V,D,D_range,ageing_rate)
+        k = age_springs(k, system, D, V, C, D_range)
 
-        D, V, forbidden_states = getForbiddenModes(C, k, M, w_c, dw)
+        D, V, forbidden_states = get_forbidden_states(C, k, system)
         print(trial,forbidden_states)
 
-        if forbidden_states<=success_frac*forbidden_states_initial:
+        if forbidden_states <= success_frac * forbidden_states_initial:
 
-            return k, 1,trial
+            return k, 1, trial
 
-    return k,0,trial
+    return k, 0, trial
 
 def age_springs_compressed(k_old, system, result, C_init, C_final, D_range):
     """
@@ -292,12 +307,31 @@ def age_springs_compressed(k_old, system, result, C_init, C_final, D_range):
     Returns:
     k_new: new spring constant matrix
     """
+    threshold = 0.05  # Define a threshold for importance increase
+    penalty_factor = 0.1  # Factor to penalize increasing importance in initial state
+
     bond_importance_init = scale_bond_importance(get_bond_importance(C_init, result.V_init, result.D_init, D_range))
     bond_importance_final = scale_bond_importance(get_bond_importance(C_final, result.V_final, result.D_final, D_range))
 
-    bond_importance_difference = bond_importance_final#-bond_importance_init
+    # Calculate the ratio of forbidden states (add 1 to initial to avoid division by zero)
+    #forbidden_states_ratio = (result.forbidden_states_init + 1) / (result.forbidden_states_final + 1)
 
-    k_new = k_old * (1 + 2*system.ageing_rate * bond_importance_difference)
+    # Calculate the differential importance
+    differential_importance = bond_importance_final - bond_importance_init
+
+    # Adjust the differential importance to avoid increasing initial forbidden modes
+        # Strengthen or weaken springs based on differential importance
+    adjustment_factors = np.where(differential_importance > threshold, 
+                                  1 + system.ageing_rate * differential_importance, 
+                                #   0 + 1) # Strengthen
+                                  1 - penalty_factor * system.ageing_rate * differential_importance) 
+    # Adjust bond importance based on the ratio
+   # bond_importance_adjusted = bond_importance_final  #-  forbidden_states_ratio * bond_importance_init
+    
+    # Apply adjustments while maintaining a similar distribution
+    #k_new = k_old * adjustment_factors
+    #k_new = adjust_distribution(k_new, k_old)  # Function to maintain distribution
+    k_new = k_old * (1 + 2*system.ageing_rate * differential_importance)
     return k_new
 
 def scale_bond_importance(bond_importance):
@@ -345,10 +379,12 @@ def forbidden_states_compression(R,
 
     return Result_forbidden_modes(D_init,
                                   V_init,
+                                  C_init,
                                   forbidden_states_init,
                                   R_init,
                                   D_final,
                                   V_final,
+                                  C_final,
                                   forbidden_states_final,
                                   R_final,
                                   log
@@ -364,45 +400,51 @@ def optimize_ageing_compression(R, system, k_bond, shift, displacement):
     success: success boolean
     trial: trial number
     """
+
     frequency_range=[system.frequency_center - system.frequency_width/2,
                      system.frequency_center + system.frequency_width/2]
     
     D_range = [x**2 for x in frequency_range]
 
-    result = forbidden_states_compression(R,
-                                          k_bond,
-                                          system,
-                                          shift,
-                                          displacement
-    )
-    
-    forbidden_states_init_0 = result.forbidden_states_init
-    forbidden_states_final_0 = result.forbidden_states_final
-    if forbidden_states_init_0 * forbidden_states_final_0 == 0:
-        return k_bond, 1, 0
-    
-    for trial in range(1, system.nr_trials+1):
+    def condition(state):
+        trial, current_k_bond, optimization_successful = state
+        not_reached_max_trials = lax.lt(trial, system.nr_trials + 1)
+        not_optimization_successful = ~optimization_successful
+        continue_condition = lax.bitwise_and(not_reached_max_trials, not_optimization_successful)
+        return continue_condition
 
-        result = forbidden_states_compression(R,
-                                              k_bond,
-                                              system,
-                                              shift,
-                                              displacement)
-        
+    def loop_body(state):
+        trial, current_k_bond, _ = state
+        result = forbidden_states_compression(R, current_k_bond, system, shift, displacement)
+
+        optimization_successful = lax.bitwise_and(lax.ge(result.forbidden_states_init, 1),
+                                                  lax.eq(result.forbidden_states_final, 0))
+
         C_init = create_compatibility(system, result.R_init)
         C_final = create_compatibility(system, result.R_final)
-        k_bond = age_springs_compressed(k_bond, system, result, C_init, C_final, D_range)
+        k_bond_updated = age_springs_compressed(current_k_bond, system, result, C_init, C_final, D_range)
+        # Check if any entry in k_bond is NaN
+        #print(trial, result.forbidden_states_init, result.forbidden_states_final)
 
-        result = forbidden_states_compression(R,
-                                              k_bond,
-                                              system,
-                                              shift,
-                                              displacement
-        )
+        # Update carry values, note that `k_bond_updated` is only used if the loop continues.
+        return trial + 1, k_bond_updated, optimization_successful
 
-        print(trial, result.forbidden_states_init, result.forbidden_states_final)
+    initial_state = (1, k_bond, False)
+    final_trial, final_k_bond, _ = lax.while_loop(condition, loop_body, initial_state)
+    forbidden_states_final = forbidden_states_compression(R, final_k_bond, system, shift, displacement).forbidden_states_final
+    forbidden_states_init = forbidden_states_compression(R, final_k_bond, system, shift, displacement).forbidden_states_init
 
-        if result.forbidden_states_final <= system.success_fraction*forbidden_states_final_0:
-            return k_bond, 1, trial
 
-    return k_bond, 0, trial
+    return final_k_bond, final_trial, forbidden_states_init, forbidden_states_final
+
+def acoustic_compression_grad(R, system, k_bond, shift, displacement):
+    """
+    This function might not be needed since we can just use the forbidden_states_compression, but to 
+    retain functionality of other functions, we keep it for now.
+    """
+
+    result = forbidden_states_compression(R, k_bond, system, shift, displacement)
+
+    fit_final = r
+    #return result.forbidden_states_init, result.forbidden_states_final
+    return (result.forbidden_states_init + 1)/(result.forbidden_states_final + 1)

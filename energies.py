@@ -40,18 +40,21 @@ def angle_energy(system, triplets, displacement_fn, positions):
 
     output: harmonic angle energy
     """
-    i, j, k = triplets
-    pi = np.take(positions, i, axis=0)
-    pj = np.take(positions, j, axis=0)
-    pk = np.take(positions, k, axis=0)
-    theta = compute_angle_between_triplet(displacement_fn, pi, pj, pk)
-    return 0.5 * system.k_angle * (theta - system.initial_angles)**2
+    def angle(triplet):
+        i, j, k = triplet
+        pi = np.take(positions, i, axis=0)
+        pj = np.take(positions, j, axis=0)
+        pk = np.take(positions, k, axis=0)
+        return compute_angle_between_triplet(displacement_fn, pi, pj, pk)
+    
+    angles = vmap(angle)(triplets)
+    return 0.5 * system.k_angle * (angles - system.initial_angles)**2
 
 # Assume angle_triplets is an array of shape (num_angles, 3)
 # Each row in angle_triplets represents a set of indices (i, j, k)
 
 # Vectorize the function
-vectorized_angle_energy = vmap(angle_energy, in_axes=(None, 0, None , None))
+#vectorized_angle_energy = vmap(angle_energy, in_axes=(None, 0, None , None))
 
 # Usage during simulation
 #current_positions = ... # Update this during your simulation

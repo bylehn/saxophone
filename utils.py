@@ -145,7 +145,7 @@ class System:
         if self.G is None:
             raise ValueError("Graph not created. Call createDelaunayGraph first.")
 
-        nodes = np.array(list(self.G.nodes))
+        nodes = onp.array(list(self.G.nodes))
         x_values = nodes % self.nr_points
         y_values = nodes // self.nr_points
 
@@ -238,7 +238,7 @@ def poisson_ratio(initial_horizontal, initial_vertical, final_horizontal, final_
     return -delta_vertical / delta_horizontal
 
 @jit
-def update_kbonds(gradients, k_bond, learning_rate = 0.01):
+def update_kbonds(gradients, k_bond, learning_rate = 0.1):
     """
     Updates spring constants based on gradients.
 
@@ -300,7 +300,7 @@ def compute_angle_between_triplet(displacement_fn, pi, pj, pk):
     u_ij = d_ij / space.distance(d_ij)
     u_kj = d_kj / space.distance(d_kj)
     cos_theta = np.dot(u_ij, u_kj)
-    return np.arccos(np.clip(cos_theta, -1.0, 1.0))
+    return np.arccos(np.clip(cos_theta, -0.999, 0.999))
 
 
 def calculate_initial_angles(positions,  angle_triplets_data, displacement_fn):

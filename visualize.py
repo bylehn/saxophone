@@ -4,6 +4,8 @@ import networkx as nx
 from matplotlib.animation import FuncAnimation
 from IPython.display import HTML, display
 import jax.numpy as np
+import numpy as onp
+import simulation
 sns.set_style(style='white')
 
 def format_plot(x, y):
@@ -54,7 +56,7 @@ def makemovie(N, G, traj, amp, xylims, stride=10):
     plt.show()
     return ani
 
-def makemovie_bondwidth(N, G, k, traj, amp=1., xylims=9., stride=10):
+def makemovie_bondwidth(system, k, traj, amp=1., xylims=9., stride=10):
 
     # Set style
     sns.set_style(style='white')
@@ -73,8 +75,8 @@ def makemovie_bondwidth(N, G, k, traj, amp=1., xylims=9., stride=10):
         R_0 = traj['position'][0]
         R_plt = R_0 + amp * (R_plt - R_0)
 
-        pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(N)}
-        nx.draw_networkx_edges(G, pos, width=2*k, alpha=0.6,edge_color='k')
+        pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
+        nx.draw_networkx_edges(system.G, pos, width=1*k, alpha=0.6,edge_color='k')
         plt.xlim([0, xylims])
         plt.ylim([0, xylims])
 
@@ -90,7 +92,39 @@ def makemovie_bondwidth(N, G, k, traj, amp=1., xylims=9., stride=10):
     plt.show()
     return ani
 
-def makemovieDOS(N, G, E, M, k, traj, w_c, dw,stride=10):
+def makemovie_bondwidth_labels(system, k, traj, amp=1., xylims=9., stride=10):
+    sns.set_style(style='white')
+    k = np.squeeze(k)
+    
+    def init():
+        plt.axis('on')
+        return plt
+
+    def update(frame):
+        plt.clf()  # Clear the current figure
+        R_plt = traj['position'][frame]
+        R_0 = traj['position'][0]
+        R_plt = R_0 + amp * (R_plt - R_0)
+
+        pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
+        nx.draw_networkx_edges(system.G, pos, width=1*k, alpha=0.6, edge_color='k')
+
+        # Draw node numbers on the nodes
+        nx.draw_networkx_labels(system.G, pos, font_size=8, font_color='r')
+
+        plt.xlim([0, xylims])
+        plt.ylim([0, xylims])
+        plt.axis('on')
+        return plt
+
+    fig, ax = plt.subplots(figsize=(5, 5))
+    ani = FuncAnimation(fig, update, frames=range(0, len(traj['position']), stride), init_func=init, blit=False)
+    ani.save('compressedexample.gif', writer='imagemagick')
+    display(HTML(ani.to_jshtml()))
+    plt.show()
+    return ani
+
+def makemovieDOS(system, k, traj,stride=10):
 
     # Set style
     sns.set_style(style='white')
@@ -105,8 +139,8 @@ def makemovieDOS(N, G, E, M, k, traj, w_c, dw,stride=10):
     def update(frame):
         plt.clf()  # Clear the current figure
         R_plt = traj['position'][frame]
-        C=createCompatibility(N,R_plt,E)
-        D, V, forbidden_states = getForbiddenModes(C, k, M, w_c, dw)
+        C = simulation.create_compatibility(system, R_plt)
+        D, V, forbidden_states = simulation.get_forbidden_states(C, k, system)
         plt.hist(onp.sqrt(onp.abs(D)), bins=onp.arange(-0.025, 4.025, 0.05), density=False)
         plt.xlabel(r'$\omega$')
         plt.ylabel(r'$\rho(\omega)$')
