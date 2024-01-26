@@ -445,4 +445,6 @@ def acoustic_compression_grad(R, system, k_bond, shift, displacement):
 
     result = forbidden_states_compression(R, k_bond, system, shift, displacement)
 
-    return result.forbidden_states_final
+    fit_final = r
+    #return result.forbidden_states_init, result.forbidden_states_final
+    return (result.forbidden_states_init + 1)/(result.forbidden_states_final + 1)
