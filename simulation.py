@@ -437,14 +437,18 @@ def optimize_ageing_compression(R, system, k_bond, shift, displacement):
 
     return final_k_bond, final_trial, forbidden_states_init, forbidden_states_final
 
-def acoustic_compression_grad(R, system, k_bond, shift, displacement):
+def acoustic_compression_grad(R, system, k_bond, k_fit, shift, displacement):
     """
     This function might not be needed since we can just use the forbidden_states_compression, but to 
     retain functionality of other functions, we keep it for now.
     """
-
+    def fitness_energy(frequency, frequency_center, k_fit):
+        return k_fit * (frequency - frequency_center)**2
+    
     result = forbidden_states_compression(R, k_bond, system, shift, displacement)
 
-    fit_final = r
+    fit_final = fitness_energy(np.sqrt(result.D_final), system.frequency_center, k_fit)
+    fit_init = fitness_energy(np.sqrt(result.D_init), system.frequency_center, k_fit)
+
     #return result.forbidden_states_init, result.forbidden_states_final
-    return (result.forbidden_states_init + 1)/(result.forbidden_states_final + 1)
+    return np.sum(np.exp(-fit_init)) - np.sum(np.exp(-fit_final))
