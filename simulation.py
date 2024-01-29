@@ -15,11 +15,13 @@ Result_forbidden_modes = namedtuple('Result', [
     'V_init',
     'C_init',
     'forbidden_states_init',
+    'frequency_init',
     'R_init',
     'D_final',
     'V_final',
     'C_final',
     'forbidden_states_final',
+    'frequency_final',
     'R_final',
     'log'
 ])
@@ -239,7 +241,7 @@ def get_forbidden_states(C, k_bond, system):
     forbidden_states = np.sum(np.logical_and(frequency > system.frequency_center - system.frequency_width/2,
                                               frequency < system.frequency_center + system.frequency_width/2))
     V = np.real(V)
-    return D, V, forbidden_states
+    return D, V, forbidden_states, frequency
 
 def age_springs(k_old, system, D, V, C, D_range):
     """
@@ -374,18 +376,20 @@ def forbidden_states_compression(R,
     
     C_init = create_compatibility(system, R_init)
     C_final = create_compatibility(system, R_final)
-    D_init, V_init, forbidden_states_init = get_forbidden_states(C_init, k_bond, system)
-    D_final, V_final, forbidden_states_final = get_forbidden_states(C_final, k_bond, system)
+    D_init, V_init, forbidden_states_init, frequency_init = get_forbidden_states(C_init, k_bond, system)
+    D_final, V_final, forbidden_states_final, frequency_final = get_forbidden_states(C_final, k_bond, system)
 
     return Result_forbidden_modes(D_init,
                                   V_init,
                                   C_init,
                                   forbidden_states_init,
+                                  frequency_init,
                                   R_init,
                                   D_final,
                                   V_final,
                                   C_final,
                                   forbidden_states_final,
+                                  frequency_final,
                                   R_final,
                                   log
     )
@@ -437,18 +441,32 @@ def optimize_ageing_compression(R, system, k_bond, shift, displacement):
 
     return final_k_bond, final_trial, forbidden_states_init, forbidden_states_final
 
-def acoustic_compression_grad(R, system, k_bond, k_fit, shift, displacement):
+def acoustic_compression_grad(R, system, k_bond, shift, displacement, k_fit=20):
     """
     This function might not be needed since we can just use the forbidden_states_compression, but to 
     retain functionality of other functions, we keep it for now.
     """
-    def fitness_energy(frequency, frequency_center, k_fit):
-        return k_fit * (frequency - frequency_center)**2
+    #def fitness_energy(frequency, frequency_center, k_fit):
+    #    return k_fit * (frequency - frequency_center)**2
     
-    result = forbidden_states_compression(R, k_bond, system, shift, displacement)
+    def fitness_energy(forbidden_states, baseline_forbidden_states, k_fit, penalty_rate=50):
+        penalty = penalty_rate * max(0, baseline_forbidden_states - forbidden_states)
+        return k_fit * forbidden_states + penalty
 
-    fit_final = fitness_energy(np.sqrt(result.D_final), system.frequency_center, k_fit)
-    fit_init = fitness_energy(np.sqrt(result.D_init), system.frequency_center, k_fit)
+    result = forbidden_states_compression(R, k_bond, system, shift, displacement)
+    # Fitness energy for the initial state with a penalty for reducing forbidden states
+    fit_init = fitness_energy(result.forbidden_states_init, result.forbidden_states_init, k_fit)
+
+    # Fitness energy for the final state
+    fit_final = fitness_energy(result.forbidden_states_final, result.forbidden_states_init, k_fit, 0)
+
+    # Weighted objective function: Heavily weight the final state's energy
+    objective_function = fit_final + fit_init
+    
+    
+
+    fit_final = fitness_energy(result.frequency_init, system.frequency_center, k_fit)
+    fit_init = fitness_energy(result.frequency_final, system.frequency_center, k_fit)
 
     #return result.forbidden_states_init, result.forbidden_states_final
-    return np.sum(np.exp(-fit_init)) - np.sum(np.exp(-fit_final))
+    return objective_function
