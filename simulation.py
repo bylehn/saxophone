@@ -197,9 +197,9 @@ def simulate_auxetic_NOMM(R,
     R_final: final positions
     """
     #update variables according to R so that the derivative accounts for them
-    system.R=R
-    system.create_spring_constants()
+    system.X=R
     displacement = system.displacement
+    system.create_spring_constants()
     system.calculate_initial_angles_method(displacement)
 
     # Get the surface nodes.
