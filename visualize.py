@@ -140,7 +140,7 @@ def makemovieDOS(system, k, traj,stride=10):
         plt.clf()  # Clear the current figure
         R_plt = traj['position'][frame]
         C = simulation.create_compatibility(system, R_plt)
-        D, V, forbidden_states = simulation.get_forbidden_states(C, k, system)
+        D, V, forbidden_states,_ = simulation.get_forbidden_states(C, k, system)
         plt.hist(onp.sqrt(onp.abs(D)), bins=onp.arange(-0.025, 4.025, 0.05), density=False)
         plt.xlabel(r'$\omega$')
         plt.ylabel(r'$\rho(\omega)$')
