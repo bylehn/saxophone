@@ -119,7 +119,7 @@ def simulate_auxetic(R,
     def energy_fn(R, system, **kwargs):
         angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
-        bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.L, epsilon=k_bond[:, 0])(R, **kwargs)
+        bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
 
         return bond_energy + angle_energy
 
@@ -167,6 +167,157 @@ def simulate_auxetic_optimize(R,
 
     """             
     poisson, _, _, _ = simulate_auxetic(R, k_bond, system, shift, displacement)
+
+    return poisson
+
+# adding a node optimized version of auxetic here
+
+def simulate_auxetic_NOMM(R,
+                     k_bond,
+                     system,
+                     shift,
+                     displacement
+                     ):
+    """
+    Simulates the auxetic process using a System instance and is set to evaulate network with a "natural" equal width spring constants
+
+    system: System instance containing the state and properties of the system
+    shift: shift parameter for the FIRE minimization
+    perturbation: total perturbation
+    delta_perturbation: perturbation step size
+    displacement: displacement function
+    steps: number of steps in the simulation
+    write_every: frequency of writing data
+    optimize: boolean to indicate whether to optimize the poisson ratio
+
+    Returns:
+    poisson: poisson ratio
+    log: log dictionary
+    R_init: initial positions
+    R_final: final positions
+    """
+    #update variables according to R so that the derivative accounts for them
+    system.X=R
+    displacement = system.displacement
+    system.create_spring_constants()
+    system.calculate_initial_angles_method(displacement)
+
+    # Get the surface nodes.
+    top_indices = system.surface_nodes['top']
+    bottom_indices = system.surface_nodes['bottom']
+    left_indices = system.surface_nodes['left']
+    right_indices = system.surface_nodes['right']
+    mask = np.ones(R.shape)
+    mask = mask.at[left_indices].set(0)
+    mask = mask.at[right_indices].set(0)
+    num_iterations = int(onp.ceil(system.perturbation / system.delta_perturbation))
+    # Initialize the cumulative perturbation
+    cumulative_perturbation = 0.0
+
+    log = {
+            'force': onp.zeros((num_iterations*(system.steps // system.write_every),) + R.shape),
+            'position': onp.zeros((num_iterations*(system.steps // system.write_every),) + R.shape)
+    }
+
+    def step_fn_generator(apply, start_idx):
+        def step_fn(i, state_and_log):
+            """
+            Minimizes the configuration at each step.
+
+            i: step number
+            state_and_log: state and log dictionary
+            """
+            fire_state, log = state_and_log
+            i_adjusted = i + start_idx
+            log['force'] = lax.cond(i_adjusted % system.write_every == 0,
+                                        lambda p: p.at[i_adjusted // system.write_every].set(fire_state.force),
+                                        lambda p: p,
+                                        log['force'])
+
+            log['position'] = lax.cond(i_adjusted % system.write_every == 0,
+                                            lambda p: p.at[i_adjusted // system.write_every].set(fire_state.position),
+                                            lambda p: p,
+                                            log['position'])
+
+            fire_state = apply(fire_state)
+            return fire_state, log
+
+        return step_fn
+
+    def perturb_and_minimize(i, state_log_perturb):
+        R_current, log, cumulative_perturbation = state_log_perturb
+        R_perturbed = R_current.at[left_indices, 0].add(system.delta_perturbation)
+        cumulative_perturbation += system.delta_perturbation
+        # Update the force function with the new positions
+        force_fn = energies.constrained_force_fn(R_perturbed, energy_fn_wrapper, mask)
+
+        # Reinitialize the fire state with the new positions and updated force function
+        fire_init, fire_apply = minimize.fire_descent(force_fn, shift)
+        fire_state = fire_init(R_perturbed)
+
+        # Update step function generator with the new start index
+
+        start_idx = i * (system.steps // system.write_every)
+
+        step_fn = step_fn_generator(fire_apply, start_idx)
+
+        # Perform the minimization step
+        fire_state, log = lax.fori_loop(0, system.steps, step_fn, (fire_state, log))
+        R_perturbed = fire_state.position
+
+        return R_perturbed, log, cumulative_perturbation
+
+    def energy_fn(R, system, **kwargs):
+        angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
+        # Bond energy (assuming that simple_spring_bond is JAX-compatible)
+        bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
+
+        return bond_energy + angle_energy
+
+    def energy_fn_wrapper(R, **kwargs):
+        return energy_fn(R, system, **kwargs)
+
+    R_init = R
+    # Initial dimensions (before deformation)
+    # Exclude the first and last index for horizontal edges (top and bottom)
+    # as these are corners with the left and right edges
+    initial_horizontal = onp.mean(R_init[right_indices[1:-1]], axis=0)[0] - onp.mean(R_init[left_indices[1:-1]], axis=0)[0]
+
+    # Exclude the first and last index for vertical edges (left and right)
+    # as these are corners with the top and bottom edges
+    initial_vertical = onp.mean(R_init[top_indices[1:-1]], axis=0)[1] - onp.mean(R_init[bottom_indices[1:-1]], axis=0)[1]
+
+    R_final, log, cumulative_perturbation = lax.fori_loop(0, num_iterations, perturb_and_minimize, (R_init, log, cumulative_perturbation))
+    # Final dimensions (after deformation)
+    final_horizontal = onp.mean(R_final[right_indices[1:-1]], axis=0)[0] - onp.mean(R_final[left_indices[1:-1]], axis=0)[0]
+    final_vertical = onp.mean(R_final[top_indices[1:-1]], axis=0)[1] - onp.mean(R_final[bottom_indices[1:-1]], axis=0)[1]
+
+    # Calculate the poisson ratio.
+    poisson = utils.poisson_ratio(initial_horizontal, initial_vertical, final_horizontal, final_vertical)
+    #fit = fitness(poisson)
+
+    return poisson, log, R_init, R_final
+
+def simulate_auxetic_optimize_NOMM(R,
+                     k_bond,
+                     system,
+                     shift,
+                     displacement
+                     ):
+    """
+    Simulates the auxetic process using a System instance.
+
+    R: position matrix  
+    k_bond: spring constant matrix
+    system: System instance containing the state and properties of the system   
+    shift: shift parameter for the FIRE minimization
+    displacement: displacement function             
+
+    Returns:
+    poisson: poisson ratio
+
+    """             
+    poisson, _, _, _ = simulate_auxetic_NOMM(R, k_bond, system, shift, displacement)
 
     return poisson
 
