@@ -271,8 +271,9 @@ def simulate_auxetic_NOMM(R,
         angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
+        node_energy = energy.soft_sphere_pair(displacement, sigma=0.3, epsilon=10.0)(R, **kwargs)
 
-        return bond_energy + angle_energy
+        return bond_energy + angle_energy + node_energy
 
     def energy_fn_wrapper(R, **kwargs):
         return energy_fn(R, system, **kwargs)
@@ -567,8 +568,9 @@ def forbidden_states_compression_NOMM(R,
                                                shift,
                                                displacement
                                                )
-    
+
     C_init = create_compatibility(system, R_init)
+
     C_final = create_compatibility(system, R_final)
     D_init, V_init, forbidden_states_init, frequency_init = get_forbidden_states(C_init, k_bond, system)
     D_final, V_final, forbidden_states_final, frequency_final = get_forbidden_states(C_final, k_bond, system)
