@@ -20,6 +20,8 @@ jupyterlab = ">=4.0,<5.0"
 gpt4all = "^1.0.8"
 boto3 = "^1.28.36"
 jax-md = "^0.2.8"
+jax = "^0.3.13"  # Use the latest version suitable for your project
+jaxlib = "*"  # Use the latest version suitable for your project
 
 
 [tool.poetry.group.dev.dependencies]
