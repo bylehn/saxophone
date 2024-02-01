@@ -170,7 +170,7 @@ def quiver_plot(R_init, R_final, E, ms = 30):
     R_plt = np.array(R_final)  # Assuming R_final is already defined
 
     # Plotting atoms
-    plt.plot(R_plt[:N, 0], R_plt[:N, 1], 'o', markersize=ms * 0.5)
+    plt.plot(R_plt[:, 0], R_plt[:, 1], 'o', markersize=ms * 0.5)
 
     # Plotting bonds
     for bond in E:  # Assuming E is your list of bonds

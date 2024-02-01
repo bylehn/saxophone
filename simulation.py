@@ -121,7 +121,7 @@ def simulate_auxetic(R,
     def energy_fn(R, system, **kwargs):
         angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
-        bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.L, epsilon=k_bond[:, 0])(R, **kwargs)
+        bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
 
         return bond_energy + angle_energy
 
