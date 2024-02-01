@@ -343,8 +343,8 @@ def get_bond_importance(C, V, D, D_range):
 
 def create_compatibility(system, R):
     N_b = system.E.shape[0]
-    mdict = dict(zip(range(system.N), system.m))
-    nx.set_node_attributes(system.G, mdict, 'Mass')
+    #mdict = dict(zip(range(system.N), system.m))
+    #nx.set_node_attributes(system.G, mdict, 'Mass')
 
     # Initialize C with zeros
     C = np.zeros((2 * system.N, N_b))
@@ -546,7 +546,7 @@ def forbidden_states_compression_NOMM(R,
                                  k_bond,
                                  system,
                                  shift,
-                                 displacement,
+                                 displacement
     ):
     """
     Get the forbidden modes when compressing the network.
@@ -636,61 +636,58 @@ def optimize_ageing_compression(R, system, k_bond, shift, displacement):
 
     return final_k_bond, final_trial, forbidden_states_init, forbidden_states_final
 
-def acoustic_compression_grad(R, system, k_bond, shift, displacement, k_fit=20):
-    """
-    This function might not be needed since we can just use the forbidden_states_compression, but to 
-    retain functionality of other functions, we keep it for now.
-    """
-    def gap_fitness(frequency, frequency_center, k_fit):
+def acoustic_compression_wrapper(system, shift, displacement, k_fit=20):
+    def acoustic_compression_grad(R, k_bond):
+        """
+        This function might not be needed since we can just use the forbidden_states_compression, but to 
+        retain functionality of other functions, we keep it for now.
+        """
+        def gap_fitness(frequency, frequency_center, k_fit):
+            
+            return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
         
-        return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
-    
-    #def fitness_energy(forbidden_states, baseline_forbidden_states, k_fit, penalty_rate=50):
-    #    penalty = penalty_rate * max(0, baseline_forbidden_states - forbidden_states)
-    #    return k_fit * forbidden_states + penalty
+        #def fitness_energy(forbidden_states, baseline_forbidden_states, k_fit, penalty_rate=50):
+        #    penalty = penalty_rate * max(0, baseline_forbidden_states - forbidden_states)
+        #    return k_fit * forbidden_states + penalty
 
-    result = forbidden_states_compression(R, k_bond, system, shift, displacement)
-    # Fitness energy for the initial state with a penalty for reducing forbidden states
-    fit_init = gap_fitness(result.frequency_init, system.frequency_center, k_fit)
+        result = forbidden_states_compression(R, k_bond, system, shift, displacement)
+        # Fitness energy for the initial state with a penalty for reducing forbidden states
+        fit_init = gap_fitness(result.frequency_init, system.frequency_center, k_fit)
 
-    # Fitness energy for the final state
-    fit_final = gap_fitness(result.frequency_final, system.frequency_center, k_fit)
+        # Fitness energy for the final state
+        fit_final = gap_fitness(result.frequency_final, system.frequency_center, k_fit)
 
-    # Weighted objective function: Heavily weight the final state's energy
-    objective_function = fit_final -fit_init
-    
-    
+        # Weighted objective function: Heavily weight the final state's energy
+        objective_function = fit_final -fit_init
 
+        #return result.forbidden_states_init, result.forbidden_states_final
+        return objective_function
+    return acoustic_compression_grad
 
-    #return result.forbidden_states_init, result.forbidden_states_final
-    return objective_function
-
-
-def acoustic_compression_grad_NOMM(R, system, k_bond, shift, displacement, k_fit=20):
-    """
-    This function might not be needed since we can just use the forbidden_states_compression, but to 
-    retain functionality of other functions, we keep it for now.
-    """
-    def gap_fitness(frequency, frequency_center, k_fit):
+def acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit=20):
+    def acoustic_compression_grad_NOMM(R, k_bond):
+        """
+        This function might not be needed since we can just use the forbidden_states_compression, but to 
+        retain functionality of other functions, we keep it for now.
+        """
+        def gap_fitness(frequency, frequency_center, k_fit):
+            
+            return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
         
-        return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
-    
-    #def fitness_energy(forbidden_states, baseline_forbidden_states, k_fit, penalty_rate=50):
-    #    penalty = penalty_rate * max(0, baseline_forbidden_states - forbidden_states)
-    #    return k_fit * forbidden_states + penalty
+        #def fitness_energy(forbidden_states, baseline_forbidden_states, k_fit, penalty_rate=50):
+        #    penalty = penalty_rate * max(0, baseline_forbidden_states - forbidden_states)
+        #    return k_fit * forbidden_states + penalty
 
-    result = forbidden_states_compression_NOMM(R, k_bond, system, shift, displacement)
-    # Fitness energy for the initial state with a penalty for reducing forbidden states
-    fit_init = gap_fitness(result.frequency_init, system.frequency_center, k_fit)
+        result = forbidden_states_compression_NOMM(R, k_bond, system, shift, displacement)
+        # Fitness energy for the initial state with a penalty for reducing forbidden states
+        fit_init = gap_fitness(result.frequency_init, system.frequency_center, k_fit)
 
-    # Fitness energy for the final state
-    fit_final = gap_fitness(result.frequency_final, system.frequency_center, k_fit)
+        # Fitness energy for the final state
+        fit_final = gap_fitness(result.frequency_final, system.frequency_center, k_fit)
 
-    # Weighted objective function: Heavily weight the final state's energy
-    objective_function = fit_final -fit_init
-    
-    
-
-
-    #return result.forbidden_states_init, result.forbidden_states_final
-    return objective_function
+        # Weighted objective function: Heavily weight the final state's energy
+        objective_function = fit_final -fit_init
+        
+        #return result.forbidden_states_init, result.forbidden_states_final
+        return objective_function
+    return acoustic_compression_grad_NOMM
