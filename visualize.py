@@ -146,7 +146,7 @@ def makemovieDOS(system, k, traj,stride=10):
         plt.ylabel(r'$\rho(\omega)$')
         print(forbidden_states)
 
-        plt.ylim(0,5)
+        #plt.ylim(0,5)
         plt.axis('on')
         return plt
 

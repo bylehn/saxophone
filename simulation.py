@@ -271,7 +271,7 @@ def simulate_auxetic_NOMM(R,
         angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
-        node_energy = energy.soft_sphere_pair(displacement, sigma=0.3, epsilon=10.0)(R, **kwargs)
+        node_energy = energy.soft_sphere_pair(displacement, sigma=0.3, epsilon=2.0)(R, **kwargs)
 
         return bond_energy + angle_energy + node_energy
 
@@ -636,7 +636,7 @@ def optimize_ageing_compression(R, system, k_bond, shift, displacement):
 
     return final_k_bond, final_trial, forbidden_states_init, forbidden_states_final
 
-def acoustic_compression_wrapper(system, shift, displacement, k_fit=20):
+def acoustic_compression_wrapper(system, shift, displacement, k_fit):
     def acoustic_compression_grad(R, k_bond):
         """
         This function might not be needed since we can just use the forbidden_states_compression, but to 
@@ -664,7 +664,7 @@ def acoustic_compression_wrapper(system, shift, displacement, k_fit=20):
         return objective_function
     return acoustic_compression_grad
 
-def acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit=20):
+def acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit):
     def acoustic_compression_grad_NOMM(R, k_bond):
         """
         This function might not be needed since we can just use the forbidden_states_compression, but to 
