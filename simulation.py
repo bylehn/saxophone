@@ -15,11 +15,13 @@ Result_forbidden_modes = namedtuple('Result', [
     'V_init',
     'C_init',
     'forbidden_states_init',
+    'frequency_init',
     'R_init',
     'D_final',
     'V_final',
     'C_final',
     'forbidden_states_final',
+    'frequency_final',
     'R_final',
     'log'
 ])
@@ -170,8 +172,6 @@ def simulate_auxetic_optimize(R,
 
     return poisson
 
-# adding a node optimized version of auxetic here
-
 def simulate_auxetic_NOMM(R,
                      k_bond,
                      system,
@@ -271,8 +271,9 @@ def simulate_auxetic_NOMM(R,
         angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
+        node_energy = energy.soft_sphere_pair(displacement, sigma=0.3, epsilon=2.0)(R, **kwargs)
 
-        return bond_energy + angle_energy
+        return bond_energy + angle_energy + node_energy
 
     def energy_fn_wrapper(R, **kwargs):
         return energy_fn(R, system, **kwargs)
@@ -321,8 +322,6 @@ def simulate_auxetic_optimize_NOMM(R,
 
     return poisson
 
-
-
 def get_bond_importance(C, V, D, D_range):
     # Create a mask for the modes within the specified range
     # Create a mask for the modes within the specified range
@@ -344,8 +343,8 @@ def get_bond_importance(C, V, D, D_range):
 
 def create_compatibility(system, R):
     N_b = system.E.shape[0]
-    mdict = dict(zip(range(system.N), system.m))
-    nx.set_node_attributes(system.G, mdict, 'Mass')
+    #mdict = dict(zip(range(system.N), system.m))
+    #nx.set_node_attributes(system.G, mdict, 'Mass')
 
     # Initialize C with zeros
     C = np.zeros((2 * system.N, N_b))
@@ -390,7 +389,7 @@ def get_forbidden_states(C, k_bond, system):
     forbidden_states = np.sum(np.logical_and(frequency > system.frequency_center - system.frequency_width/2,
                                               frequency < system.frequency_center + system.frequency_width/2))
     V = np.real(V)
-    return D, V, forbidden_states
+    return D, V, forbidden_states, frequency
 
 def age_springs(k_old, system, D, V, C, D_range):
     """
@@ -525,22 +524,71 @@ def forbidden_states_compression(R,
     
     C_init = create_compatibility(system, R_init)
     C_final = create_compatibility(system, R_final)
-    D_init, V_init, forbidden_states_init = get_forbidden_states(C_init, k_bond, system)
-    D_final, V_final, forbidden_states_final = get_forbidden_states(C_final, k_bond, system)
+    D_init, V_init, forbidden_states_init, frequency_init = get_forbidden_states(C_init, k_bond, system)
+    D_final, V_final, forbidden_states_final, frequency_final = get_forbidden_states(C_final, k_bond, system)
 
     return Result_forbidden_modes(D_init,
                                   V_init,
                                   C_init,
                                   forbidden_states_init,
+                                  frequency_init,
                                   R_init,
                                   D_final,
                                   V_final,
                                   C_final,
                                   forbidden_states_final,
+                                  frequency_final,
                                   R_final,
                                   log
     )
 
+def forbidden_states_compression_NOMM(R,
+                                 k_bond,
+                                 system,
+                                 shift,
+                                 displacement
+    ):
+    """
+    Get the forbidden modes when compressing the network.
+
+    Returns:
+    D_init: initial eigenvalues
+    V_init: initial eigenvectors
+    forbidden_states_init: initial number of forbidden states
+    R_init: initial positions
+    D_final: final eigenvalues
+    V_final: final eigenvectors
+    forbidden_states_final: final number of forbidden states
+    R_final: final positions
+    log: log dictionary
+    """
+    _, log, R_init, R_final = simulate_auxetic_NOMM(R,
+                                               k_bond,
+                                               system,
+                                               shift,
+                                               displacement
+                                               )
+
+    C_init = create_compatibility(system, R_init)
+
+    C_final = create_compatibility(system, R_final)
+    D_init, V_init, forbidden_states_init, frequency_init = get_forbidden_states(C_init, k_bond, system)
+    D_final, V_final, forbidden_states_final, frequency_final = get_forbidden_states(C_final, k_bond, system)
+
+    return Result_forbidden_modes(D_init,
+                                  V_init,
+                                  C_init,
+                                  forbidden_states_init,
+                                  frequency_init,
+                                  R_init,
+                                  D_final,
+                                  V_final,
+                                  C_final,
+                                  forbidden_states_final,
+                                  frequency_final,
+                                  R_final,
+                                  log
+    )
 
 def optimize_ageing_compression(R, system, k_bond, shift, displacement):
     """
@@ -588,14 +636,58 @@ def optimize_ageing_compression(R, system, k_bond, shift, displacement):
 
     return final_k_bond, final_trial, forbidden_states_init, forbidden_states_final
 
-def acoustic_compression_grad(R, system, k_bond, shift, displacement):
-    """
-    This function might not be needed since we can just use the forbidden_states_compression, but to 
-    retain functionality of other functions, we keep it for now.
-    """
+def acoustic_compression_wrapper(system, shift, displacement, k_fit):
+    def acoustic_compression_grad(R, k_bond):
+        """
+        This function might not be needed since we can just use the forbidden_states_compression, but to 
+        retain functionality of other functions, we keep it for now.
+        """
+        def gap_fitness(frequency, frequency_center, k_fit):
+            
+            return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
+        
+        #def fitness_energy(forbidden_states, baseline_forbidden_states, k_fit, penalty_rate=50):
+        #    penalty = penalty_rate * max(0, baseline_forbidden_states - forbidden_states)
+        #    return k_fit * forbidden_states + penalty
 
-    result = forbidden_states_compression(R, k_bond, system, shift, displacement)
+        result = forbidden_states_compression(R, k_bond, system, shift, displacement)
+        # Fitness energy for the initial state with a penalty for reducing forbidden states
+        fit_init = gap_fitness(result.frequency_init, system.frequency_center, k_fit)
 
-    fit_final = r
-    #return result.forbidden_states_init, result.forbidden_states_final
-    return (result.forbidden_states_init + 1)/(result.forbidden_states_final + 1)
+        # Fitness energy for the final state
+        fit_final = gap_fitness(result.frequency_final, system.frequency_center, k_fit)
+
+        # Weighted objective function: Heavily weight the final state's energy
+        objective_function = fit_final -fit_init
+
+        #return result.forbidden_states_init, result.forbidden_states_final
+        return objective_function
+    return acoustic_compression_grad
+
+def acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit):
+    def acoustic_compression_grad_NOMM(R, k_bond):
+        """
+        This function might not be needed since we can just use the forbidden_states_compression, but to 
+        retain functionality of other functions, we keep it for now.
+        """
+        def gap_fitness(frequency, frequency_center, k_fit):
+            
+            return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
+        
+        #def fitness_energy(forbidden_states, baseline_forbidden_states, k_fit, penalty_rate=50):
+        #    penalty = penalty_rate * max(0, baseline_forbidden_states - forbidden_states)
+        #    return k_fit * forbidden_states + penalty
+
+        result = forbidden_states_compression_NOMM(R, k_bond, system, shift, displacement)
+        # Fitness energy for the initial state with a penalty for reducing forbidden states
+        fit_init = gap_fitness(result.frequency_init, system.frequency_center, k_fit)
+
+        # Fitness energy for the final state
+        fit_final = gap_fitness(result.frequency_final, system.frequency_center, k_fit)
+
+        # Weighted objective function: Heavily weight the final state's energy
+        objective_function = fit_final -fit_init
+        
+        #return result.forbidden_states_init, result.forbidden_states_final
+        return objective_function
+    return acoustic_compression_grad_NOMM

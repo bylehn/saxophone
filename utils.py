@@ -254,6 +254,15 @@ def update_kbonds(gradients, k_bond, learning_rate = 0.1):
 
     return k_bond_new
 
+@jit
+def update_R(gradients, R_current, max_disp):
+    """
+    Updates positions based on gradients.
+    """
+    gradients_normalized = gradients / np.max(np.linalg.norm(gradients,axis=1))
+    R_updated = R_current - max_disp*gradients_normalized
+    return R_updated
+
 
 @jit
 def update_R(gradients, R_current, max_disp):
