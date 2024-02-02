@@ -23,7 +23,8 @@ Result_forbidden_modes = namedtuple('Result', [
     'forbidden_states_final',
     'frequency_final',
     'R_final',
-    'log'
+    'log',
+    'poisson'
 ])
 
 
@@ -514,6 +515,7 @@ def forbidden_states_compression(R,
     forbidden_states_final: final number of forbidden states
     R_final: final positions
     log: log dictionary
+   
     """
     _, log, R_init, R_final = simulate_auxetic(R,
                                                k_bond,
@@ -561,8 +563,9 @@ def forbidden_states_compression_NOMM(R,
     forbidden_states_final: final number of forbidden states
     R_final: final positions
     log: log dictionary
+    poisson: fish, jk. the poisson ratio
     """
-    _, log, R_init, R_final = simulate_auxetic_NOMM(R,
+    poisson, log, R_init, R_final = simulate_auxetic_NOMM(R,
                                                k_bond,
                                                system,
                                                shift,
@@ -587,7 +590,8 @@ def forbidden_states_compression_NOMM(R,
                                   forbidden_states_final,
                                   frequency_final,
                                   R_final,
-                                  log
+                                  log,
+                                  poisson
     )
 
 def optimize_ageing_compression(R, system, k_bond, shift, displacement):
@@ -658,13 +662,13 @@ def acoustic_compression_wrapper(system, shift, displacement, k_fit):
         fit_final = gap_fitness(result.frequency_final, system.frequency_center, k_fit)
 
         # Weighted objective function: Heavily weight the final state's energy
-        objective_function = fit_final -fit_init
+        objective_function = fit_final -fit_init 
 
         #return result.forbidden_states_init, result.forbidden_states_final
         return objective_function
     return acoustic_compression_grad
 
-def acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit):
+def acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit, poisson_factor):
     def acoustic_compression_grad_NOMM(R, k_bond):
         """
         This function might not be needed since we can just use the forbidden_states_compression, but to 
@@ -686,7 +690,7 @@ def acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit):
         fit_final = gap_fitness(result.frequency_final, system.frequency_center, k_fit)
 
         # Weighted objective function: Heavily weight the final state's energy
-        objective_function = fit_final -fit_init
+        objective_function = fit_final -fit_init + poisson_factor*result.poisson
         
         #return result.forbidden_states_init, result.forbidden_states_final
         return objective_function
