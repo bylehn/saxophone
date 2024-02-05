@@ -341,3 +341,10 @@ def calculate_initial_angles(positions,  angle_triplets_data, displacement_fn):
     
     angles = vmap(angle)(angle_triplets_data)
     return angles
+
+def is_hermitian(matrix):
+    # Calculate the conjugate transpose of the matrix
+    conjugate_transpose = np.conj(matrix).T
+    
+    # Check if the matrix is equal to its conjugate transpose
+    return np.allclose(matrix, conjugate_transpose)

@@ -300,7 +300,7 @@ def simulate_auxetic_NOMM(R,
 
     return poisson, log, R_init, R_final
 
-def simulate_auxetic_optimize_NOMM(R,
+def simulate_auxetic_NOMM_wrapper(R,
                      k_bond,
                      system,
                      shift,
@@ -319,9 +319,26 @@ def simulate_auxetic_optimize_NOMM(R,
     poisson: poisson ratio
 
     """             
-    poisson, _, _, _ = simulate_auxetic_NOMM(R, k_bond, system, shift, displacement)
 
-    return poisson
+
+    def simulate_auxetic_optimize_NOMM(R,
+                         k_bond
+                         ):
+        """
+        wrapped function.
+    
+        R: position matrix  
+        k_bond: spring constant matrix
+             
+    
+        Returns:
+        poisson: poisson ratio
+    
+        """             
+        poisson, _, _, _ = simulate_auxetic_NOMM(R, k_bond, system, shift, displacement)
+    
+        return poisson
+    return simulate_auxetic_optimize_NOMM
 
 def get_bond_importance(C, V, D, D_range):
     # Create a mask for the modes within the specified range
