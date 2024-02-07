@@ -712,3 +712,29 @@ def acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit, poisso
         #return result.forbidden_states_init, result.forbidden_states_final
         return objective_function
     return acoustic_compression_grad_NOMM
+
+
+def acoustic_auxetic_maintainer_wrapper(system, shift, displacement, k_fit, poisson_factor, poisson_init):
+    def acoustic_auxetic_maintainer(R, k_bond):
+        """
+        objective function is for creating a bandgap while maintaining input poisson ratio
+        """
+        def gap_fitness(frequency, frequency_center, k_fit):
+            
+            return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
+        
+
+
+        result = forbidden_states_compression_NOMM(R, k_bond, system, shift, displacement)
+        # Fitness energy for the initial state with a penalty for reducing forbidden states
+        fit_init = gap_fitness(result.frequency_init, system.frequency_center, k_fit)
+
+        # Fitness energy for the final state
+        fit_final = gap_fitness(result.frequency_final, system.frequency_center, k_fit)
+
+        # Weighted objective function: Heavily weight the final state's energy
+        objective_function = fit_final -fit_init + poisson_factor*(result.poisson-poisson_init)**2
+        
+        #return result.forbidden_states_init, result.forbidden_states_final
+        return objective_function
+    return acoustic_auxetic_maintainer
