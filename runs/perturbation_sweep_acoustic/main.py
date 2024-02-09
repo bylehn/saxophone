@@ -9,6 +9,7 @@ from jax import jit, vmap
 from jax import lax
 import networkx as nx
 import sys
+sys.path.insert(0, '/scratch/midway3/bylehn/auxetic_networks_jaxmd/')  # Adds the parent directory to sys.path
 import jaxnets.visualize as visualize
 import jaxnets.utils as utils
 import jaxnets.simulation as simulation
@@ -122,7 +123,7 @@ def generate_acoustic(run, perturbation):
 # %%
 
 
-perturbation = sys.argv[1]
+perturbation = onp.float64(sys.argv[1])
 
 num_of_runs = 5 
 results=[]

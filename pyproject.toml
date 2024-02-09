@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "networks"
+name = "jaxnets"
 version = "0.1.0"
 description = "For working with jax-md"
 authors = ["Fabian Bylehn <bylehn@uchicago.edu>"]

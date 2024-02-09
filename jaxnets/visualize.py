@@ -5,7 +5,7 @@ from matplotlib.animation import FuncAnimation
 from IPython.display import HTML, display
 import jax.numpy as np
 import numpy as onp
-import simulation
+import jaxnets.simulation as simulation
 sns.set_style(style='white')
 
 def format_plot(x, y):

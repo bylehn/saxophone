@@ -348,3 +348,5 @@ def is_hermitian(matrix):
     
     # Check if the matrix is equal to its conjugate transpose
     return np.allclose(matrix, conjugate_transpose)
+
+

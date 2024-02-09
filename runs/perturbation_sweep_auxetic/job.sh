@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Array of perturbation iis to test
+perturbation=(0.1 0.2 0.5 0.8 1.0 1.5 1.8 2.0 2.3 2.5)
+
+for ii in "${perturbation[@]}"; do
+    # Replace negative sign with 'minus_' to avoid mkdir command error
+    dir_name=$(echo ${ii} | sed 's/-/minus_/')
+    
+    # Create a directory with the modified name
+    mkdir -p ${dir_name}
+    
+    # Change to the newly created directory
+    cd ${dir_name}
+    
+    # Submit the job
+    sbatch --job-name=${dir_name} \
+           --account=pi-depablo \
+           --partition=caslake \
+           --output=job_output_%j.txt \
+           --nodes=1 \
+           --tasks=4 \
+           --mem-per-cpu=6G \
+           --time=02:00:00 \
+           --wrap="python ../main.py ${ii}"
+    
+    # Change back to the original directory
+    cd ..
+done
+
