@@ -122,7 +122,7 @@ def generate_acoustic(run, perturbation):
 # %%
 
 
-perturbation = sys.argv[1]
+perturbation = onp.float64(sys.argv[1])
 
 num_of_runs = 5 
 results=[]
