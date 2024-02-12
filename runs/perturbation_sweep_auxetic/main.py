@@ -42,7 +42,7 @@ def generate_auxetic(run, perturbation):
     auxetic_function = simulation.simulate_auxetic_NOMM_wrapper(R, k_bond, system,shift,displacement)
     grad_auxetic_NOMM = jit(grad(auxetic_function, argnums=0))
     grad_auxetic_NOMM_k = jit(grad(auxetic_function, argnums=1))
-    opt_steps = 20
+    opt_steps = 200
     R_temp = R
     k_temp = k_bond
     poisson = -10
@@ -53,6 +53,9 @@ def generate_auxetic(run, perturbation):
     2: max k_temp exceeded
     
     """
+    prev_gradient_max_k = 0
+    prev_gradient_max_R = 0
+
     for i in range(opt_steps):
 
         #evaluate gradients for bond stiffness and positions
@@ -63,11 +66,18 @@ def generate_auxetic(run, perturbation):
         gradient_max_k = np.max(np.abs(gradients_k))
         gradient_max_R = np.max(np.abs(gradients_R))
 
-        #check if gradients exceed a threshold
-        if np.maximum(gradient_max_k,gradient_max_R)>0.1:
-            print(i, gradient_max_k, gradient_max_R)
+        #calculate difference in maximum gradients
+        diff_gradient_max_k = gradient_max_k - prev_gradient_max_k
+        diff_gradient_max_R = gradient_max_R - prev_gradient_max_R
+    
+        #check if difference in gradients exceed a threshold
+        if np.maximum(diff_gradient_max_k, diff_gradient_max_R) > 5.:
+            print(i, diff_gradient_max_k, diff_gradient_max_R)
             exit_flag = 1
             break
+        
+        prev_gradient_max_k = gradient_max_k
+        prev_gradient_max_R = gradient_max_R
 
         #check if k_temp has exceeded a threshold
         if np.max(k_temp)>10:
@@ -99,8 +109,8 @@ for run in range(num_of_runs):
 
 
 
-results=np.array(results)
-np.savetxt('results.txt',np.array(results),fmt='%i %.5f %i')
+results = np.array(results)
+onp.savetxt('results.txt', results ,fmt='%i %.5f %i')
 
 
 # %%

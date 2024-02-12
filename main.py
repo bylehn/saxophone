@@ -76,6 +76,9 @@ def generate_acoustic(run, perturbation):
     grad_acoustic_k = jit(grad(acoustic_function, argnums=1))
     
 
+    prev_gradient_max_k = 0
+    prev_gradient_max_R = 0
+    
     for i in range(opt_steps):
         gradients_k = grad_acoustic_k(R_temp, k_temp)
         gradients_R = grad_acoustic_R(R_temp, k_temp)
@@ -83,13 +86,19 @@ def generate_acoustic(run, perturbation):
         #evaluate maximum gradients
         gradient_max_k = np.max(np.abs(gradients_k))
         gradient_max_R = np.max(np.abs(gradients_R))
+        
+        #calculate difference in maximum gradients
+        diff_gradient_max_k = gradient_max_k - prev_gradient_max_k
+        diff_gradient_max_R = gradient_max_R - prev_gradient_max_R
     
-        #check if gradients exceed a threshold
-        if np.maximum(gradient_max_k,gradient_max_R)>10:
-            print(i, gradient_max_k, gradient_max_R)
+        #check if difference in gradients exceed a threshold
+        if np.maximum(diff_gradient_max_k, diff_gradient_max_R) > 5.:
+            print(i, diff_gradient_max_k, diff_gradient_max_R)
             exit_flag = 1
             break
-    
+        
+        prev_gradient_max_k = gradient_max_k
+        prev_gradient_max_R = gradient_max_R
         #check if k_temp has exceeded a threshold
         if np.max(k_temp)>10:
             print('max k_temp',np.max(k_temp))

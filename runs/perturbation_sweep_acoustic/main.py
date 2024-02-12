@@ -9,7 +9,6 @@ from jax import jit, vmap
 from jax import lax
 import networkx as nx
 import sys
-sys.path.insert(0, '/scratch/midway3/bylehn/auxetic_networks_jaxmd/')  # Adds the parent directory to sys.path
 import jaxnets.visualize as visualize
 import jaxnets.utils as utils
 import jaxnets.simulation as simulation
@@ -45,7 +44,7 @@ def generate_acoustic(run, perturbation):
  
 
     
-    opt_steps = 100
+    opt_steps = 200
     R_temp = R
     k_temp = k_bond
     
@@ -77,6 +76,9 @@ def generate_acoustic(run, perturbation):
     grad_acoustic_k = jit(grad(acoustic_function, argnums=1))
     
 
+    prev_gradient_max_k = 0
+    prev_gradient_max_R = 0
+    
     for i in range(opt_steps):
         gradients_k = grad_acoustic_k(R_temp, k_temp)
         gradients_R = grad_acoustic_R(R_temp, k_temp)
@@ -84,13 +86,19 @@ def generate_acoustic(run, perturbation):
         #evaluate maximum gradients
         gradient_max_k = np.max(np.abs(gradients_k))
         gradient_max_R = np.max(np.abs(gradients_R))
+        
+        #calculate difference in maximum gradients
+        diff_gradient_max_k = gradient_max_k - prev_gradient_max_k
+        diff_gradient_max_R = gradient_max_R - prev_gradient_max_R
     
-        #check if gradients exceed a threshold
-        if np.maximum(gradient_max_k,gradient_max_R)>10:
-            print(i, gradient_max_k, gradient_max_R)
+        #check if difference in gradients exceed a threshold
+        if np.maximum(diff_gradient_max_k, diff_gradient_max_R) > 5.:
+            print(i, diff_gradient_max_k, diff_gradient_max_R)
             exit_flag = 1
             break
-    
+        
+        prev_gradient_max_k = gradient_max_k
+        prev_gradient_max_R = gradient_max_R
         #check if k_temp has exceeded a threshold
         if np.max(k_temp)>10:
             print('max k_temp',np.max(k_temp))
@@ -129,12 +137,12 @@ num_of_runs = 5
 results=[]
 for run in range(num_of_runs):
     bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement = generate_acoustic(run, perturbation)
-    results.append([run,bandgap_contrast, exit_flag])
+    results.append([run, perturbation, bandgap_contrast, exit_flag])
 
 
 
-results=np.array(results)
-np.savetxt('results.txt',np.array(results),fmt='%i %.5f %i')
+results = np.array(results)
+onp.savetxt('results.txt', results ,fmt='%i %.5f %i')
 
 
 # %%
