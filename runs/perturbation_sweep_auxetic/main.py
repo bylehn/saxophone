@@ -71,7 +71,7 @@ def generate_auxetic(run, perturbation):
         diff_gradient_max_R = gradient_max_R - prev_gradient_max_R
     
         #check if difference in gradients exceed a threshold
-        if np.maximum(diff_gradient_max_k, diff_gradient_max_R) > 5.:
+        if np.maximum(diff_gradient_max_k, diff_gradient_max_R) > 10.:
             print(i, diff_gradient_max_k, diff_gradient_max_R)
             exit_flag = 1
             break
@@ -95,7 +95,8 @@ def generate_auxetic(run, perturbation):
                                                                 shift,
                                                                 displacement)
         print(i, gradient_max_k, gradient_max_R,  poisson)
-    np.savez(str(run), R_temp = R_temp, k_temp = k_temp, poisson = poisson, exit_flag = exit_flag)
+    np.savez(str(run), R_temp = R_temp, k_temp = k_temp, perturbation = perturbation, connectivity = system.E,
+             surface_nodes = system.surface_nodes, poisson = poisson, exit_flag = exit_flag)
     return poisson, exit_flag, R_temp, k_temp, system, shift, displacement
 
 

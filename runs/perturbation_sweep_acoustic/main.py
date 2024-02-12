@@ -9,6 +9,7 @@ from jax import jit, vmap
 from jax import lax
 import networkx as nx
 import sys
+sys.path.insert(0, '/scratch/midway3/bylehn/auxetic_networks_jaxmd/')  # Adds the parent directory to sys.path
 import jaxnets.visualize as visualize
 import jaxnets.utils as utils
 import jaxnets.simulation as simulation
@@ -92,7 +93,7 @@ def generate_acoustic(run, perturbation):
         diff_gradient_max_R = gradient_max_R - prev_gradient_max_R
     
         #check if difference in gradients exceed a threshold
-        if np.maximum(diff_gradient_max_k, diff_gradient_max_R) > 5.:
+        if np.maximum(diff_gradient_max_k, diff_gradient_max_R) > 10.:
             print(i, diff_gradient_max_k, diff_gradient_max_R)
             exit_flag = 1
             break
@@ -122,7 +123,10 @@ def generate_acoustic(run, perturbation):
     result = simulation.forbidden_states_compression_NOMM(R_temp, k_temp, system, shift, displacement)
     np.savez(str(run), 
              R_temp = R_temp, 
-             k_temp = k_temp, 
+             k_temp = k_temp,
+             perturbation = perturbation,
+             connectivity = system.E,
+             surface_nodes = system.surface_nodes,
              bandgap_contrast = bandgap_contrast, 
              forbidden_states_init = result.forbidden_states_init,
              forbidden_states_final = result.forbidden_states_final,
