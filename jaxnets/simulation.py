@@ -781,7 +781,7 @@ def generate_acoustic(run, perturbation):
     
     bandgap_contrast = 0
 
-    result = simulation.forbidden_states_compression_NOMM(R_temp, k_temp, system, shift, displacement)
+    result = forbidden_states_compression_NOMM(R_temp, k_temp, system, shift, displacement)
 
     forbidden_states_init = result.forbidden_states_init
 
@@ -831,12 +831,6 @@ def generate_acoustic(run, perturbation):
         R_temp = utils.update_R(gradients_R, R_temp,0.01)
     
         bandgap_contrast = acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit,poisson_factor)(R_temp, k_temp)
-        
-
-        if bandgap_contrast < - 0.95*forbidden_states_init: 
-            print('converged')
-            exit_flag = 3
-            break
         
         print(i, np.max(gradients_k),np.max(gradients_R), bandgap_contrast)
 

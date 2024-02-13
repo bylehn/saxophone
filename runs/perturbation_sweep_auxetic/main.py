@@ -102,9 +102,11 @@ def generate_auxetic(run, perturbation):
 
 perturbation = onp.float64(sys.argv[1])
 
-num_of_runs = 5 
+start = 5
+end = 25
+
 results=[]
-for run in range(num_of_runs):
+for run in range(start, end):
     poisson, exit_flag, R_temp, k_temp, system, shift, displacement = generate_auxetic(run, perturbation)
     results.append([run, perturbation, poisson, exit_flag])
 
