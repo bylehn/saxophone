@@ -1045,3 +1045,157 @@ def generate_auxetic_acoustic(run, poisson_init):
              forbidden_states_final = result.forbidden_states_final,
              exit_flag = exit_flag)
     return poisson, bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement
+
+
+
+def generate_auxetic_acoustic_adaptive(run, poisson_target):
+
+    #parameters
+    steps = 50
+    write_every = 1
+    perturbation = 2.0
+    delta_perturbation = 0.1
+    number_of_nodes_per_side = 10
+    nr_trials=500
+    dw=0.2
+    w_c=2.0
+    ageing_rate=0.1
+    success_frac=0.05
+    k_fit = 50
+    poisson_factor=40
+    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
+    system.initialize()
+    system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
+    system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
+    displacement = system.displacement
+    shift = system.shift
+    R = system.X
+    k_bond = system.spring_constants
+    
+    
+    
+    
+    opt_steps = 100
+    R_temp = R
+    k_temp = k_bond
+    
+    
+    exit_flag=0
+    
+    """
+    0: max steps reached
+    1: gradients exceeded
+    2: max k_temp exceeded
+    3: converged
+    
+    """
+    
+    bandgap_contrast = 0
+    
+    result = simulation.forbidden_states_compression_NOMM(R_temp, 
+                                                          k_temp, 
+                                                          system, 
+                                                          shift, 
+                                                          displacement)
+    
+    poisson = result.poisson
+    forbidden_states_init = result.forbidden_states_init
+    forbidden_states_final = result.forbidden_states_final
+    
+    poisson_distance = np.maximum(0, 1 - poisson / poisson_target)
+    bandgap_distance = forbidden_states_final/forbidden_states_init
+    
+    
+    print('initial forbidden states: ', forbidden_states_init) 
+    
+    # acoustic functions
+    acoustic_function = simulation.acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit, poisson_factor)
+    
+    grad_acoustic_R = jit(grad(acoustic_function, argnums=0))
+    grad_acoustic_k = jit(grad(acoustic_function, argnums=1))
+    
+    #auxetic_functions
+    
+    auxetic_function = simulation.simulate_auxetic_NOMM_wrapper(R, k_bond, system,shift,displacement)
+    grad_auxetic_R = jit(grad(auxetic_function, argnums=0))
+    grad_auxetic_k = jit(grad(auxetic_function, argnums=1))
+    
+    
+    
+    prev_gradient_max = 0
+
+    for i in range(opt_steps):
+    
+        #acoustic gradients
+        gradients_acoustic_k = grad_acoustic_k(R_temp, k_temp)
+        gradients_acoustic_R = grad_acoustic_R(R_temp, k_temp)
+    
+        #auxetic gradients
+        gradients_auxetic_k = grad_auxetic_k(R_temp, k_temp)
+        gradients_auxetic_R = grad_auxetic_R(R_temp, k_temp)        
+        
+        #evaluate maximum gradients
+        gradient_max = np.max( np.abs( np.vstack((gradients_auxetic_k, 
+                                                  gradients_auxetic_R.ravel()[:, np.newaxis], 
+                                                  gradients_acoustic_k, 
+                                                  gradients_acoustic_R.ravel()[:, np.newaxis] ))))
+    
+        diff_gradient_max = gradient_max - prev_gradient_max
+    
+        #check if gradient exceeded by a lot
+        if diff_gradient_max>100:
+            print(i, gradient_max)
+            exit_flag = 1
+            break
+            
+        prev_gradient_max = gradient_max
+    
+        
+        #check if k_temp has exceeded a threshold
+        if np.max(k_temp)>10:
+            print('max k_temp',np.max(k_temp))
+            exit_flag = 2
+            break
+    
+    
+    
+    
+    
+        gradients_k = poisson_distance*gradients_auxetic_k + bandgap_distance*gradients_acoustic_k
+        gradients_R = poisson_distance*gradients_auxetic_R + bandgap_distance*gradients_acoustic_R
+        
+        
+        k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
+        R_temp = utils.update_R(gradients_R, R_temp,0.01)
+    
+        result = simulation.forbidden_states_compression_NOMM(R_temp, k_temp, system, shift, displacement)
+    
+        #extract the progress
+        poisson = result.poisson
+        forbidden_states_init = result.forbidden_states_init
+        forbidden_states_final = result.forbidden_states_final
+    
+        #update distances
+        poisson_distance = np.maximum(0 , 1 - poisson / poisson_target)
+        bandgap_distance = forbidden_states_final / forbidden_states_init
+    
+        
+        if np.abs(poisson_distance) < 0.02 and bandgap_distance < 0.05: 
+            print('converged')
+            exit_flag = 3
+            break
+    
+        
+        print(i, gradient_max, bandgap_distance, poisson_distance, forbidden_states_init, forbidden_states_final, poisson)
+
+   
+    np.savez(str(run), 
+             R_temp = R_temp, 
+             k_temp = k_temp, 
+             poisson = poisson, 
+             poisson_target = poisson_target,
+             bandgap_distance = bandgap_distance, 
+             forbidden_states_init = result.forbidden_states_init,
+             forbidden_states_final = result.forbidden_states_final,
+             exit_flag = exit_flag)
+    return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result
