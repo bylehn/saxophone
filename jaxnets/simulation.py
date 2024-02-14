@@ -801,12 +801,14 @@ def generate_acoustic(run, perturbation):
     prev_gradient_max_R = 0
     
     for i in range(opt_steps):
-        gradients_k = grad_acoustic_k(R_temp, k_temp)
-        gradients_R = grad_acoustic_R(R_temp, k_temp)
-        
+        #auxetic gradeints 
+        gradients_auxetic_k = grad_auxetic_k(R_temp, k_temp)
+        gradients_auxetic_R = grad_auxetic_R(R_temp, k_temp)
+        gradients_auxetic_k = grad_auxetic_k(R_temp, k_temp)
+        gradients_auxetic_R = grad_auxetic_R(R_temp, k_temp)
         #evaluate maximum gradients
-        gradient_max_k = np.max(np.abs(gradients_k))
-        gradient_max_R = np.max(np.abs(gradients_R))
+        gradient_max__auxetic_k = np.max(np.abs(gradients_k))
+        gradient_max_acoustic_R = np.max(np.abs(gradients_R))
         
         #calculate difference in maximum gradients
         diff_gradient_max_k = gradient_max_k - prev_gradient_max_k
