@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Array of perturbation iis to test
-perturbation=(0.1 0.2 0.5 0.8 1.0 1.5 1.8 2.0 2.3 2.5)
+perturbation=(0.1 0.2 0.5 0.8 1.0 1.3 1.5 1.8 2.0 2.3 2.5)
 
 for ii in "${perturbation[@]}"; do
     # Replace negative sign with 'minus_' to avoid mkdir command error
@@ -22,8 +22,8 @@ for ii in "${perturbation[@]}"; do
            --output=job_output_%j.txt \
            --nodes=1 \
            --tasks=4 \
-           --mem-per-cpu=6G \
-           --time=02:00:00 \
+           --mem-per-cpu=16G \
+           --time=12:00:00 \
            --wrap="python ../main.py ${ii}"
     
     # Change back to the original directory

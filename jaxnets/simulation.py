@@ -694,10 +694,6 @@ def acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit, poisso
         def gap_fitness(frequency, frequency_center, k_fit):
             
             return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
-        
-        #def fitness_energy(forbidden_states, baseline_forbidden_states, k_fit, penalty_rate=50):
-        #    penalty = penalty_rate * max(0, baseline_forbidden_states - forbidden_states)
-        #    return k_fit * forbidden_states + penalty
 
         result = forbidden_states_compression_NOMM(R, k_bond, system, shift, displacement)
         # Fitness energy for the initial state with a penalty for reducing forbidden states
@@ -747,7 +743,7 @@ def generate_acoustic(run, perturbation):
     delta_perturbation = 0.1
     number_of_nodes_per_side = 10
     nr_trials=500
-    dw=0.2
+    dw=0.1
     w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
@@ -851,7 +847,7 @@ def generate_auxetic(run, perturbation):
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
-    number_of_nodes_per_side = 7
+    number_of_nodes_per_side = 10
     nr_trials=500
     dw=0.2
     w_c=2.0
