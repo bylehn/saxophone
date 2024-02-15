@@ -751,7 +751,7 @@ def generate_acoustic(run, perturbation):
     w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
-    k_fit = 50
+    k_fit = 0.5/(dw**2) 
     poisson_factor = 0.0
     system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
@@ -859,7 +859,7 @@ def generate_auxetic(run, perturbation):
     w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
-    k_fit = 50
+    k_fit = 0.5/(dw**2) 
     poisson_factor=40
     system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
@@ -942,7 +942,7 @@ def generate_auxetic_acoustic(run, poisson_init):
     w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
-    k_fit = 50
+    k_fit = 0.5/(dw**2) 
     poisson_factor=40
     system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
@@ -1042,21 +1042,25 @@ def generate_auxetic_acoustic(run, poisson_init):
 
 
 
-def generate_auxetic_acoustic_adaptive(run, poisson_target):
+def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, dw):
 
+    """
+    run: run id, also used to as random seed
+    poisson_target: the aimed value for the poisson ratio
+    perturbation: absolute value of perturbation of the network for compression
+    w_c: frequency_center
+    dw: width of the bandgap
+    """
     #parameters
     steps = 50
     write_every = 1
-    perturbation = 2.0
     delta_perturbation = 0.1
     number_of_nodes_per_side = 10
     nr_trials=500
-    dw=0.2
-    w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
-    k_fit = 50
-    poisson_factor=40
+    k_fit = 0.5/(dw**2) 
+    poisson_factor=0.0 #important!
     system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
