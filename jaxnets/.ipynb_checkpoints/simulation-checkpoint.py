@@ -734,19 +734,18 @@ def acoustic_auxetic_maintainer_wrapper(system, shift, displacement, k_fit, pois
     return acoustic_auxetic_maintainer
 
 
-def acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed, width_closed, frequency_opened, width_opened):
-        
-        """
-        Creates objective function that opens one bandgap and closes another upon compression. Can be used to shift
-        
-        system : system class
-        shift, displacement : JAX, M.D. standards
-        frequency_closed : frequency of bandgap center being closed upon compression
-        width_closed :  width of the bandgap being closed
-        frequency_opened : frequency of bandgap center being opened upon compression
-        width_opened : width of the bandgap being opened
-        
-        """
+def acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed, width_closed, frequency_opened, width_opened):  
+    """
+    Creates objective function that opens one bandgap and closes another upon compression. Can be used to shift
+    
+    system : system class
+    shift, displacement : JAX, M.D. standards
+    frequency_closed : frequency of bandgap center being closed upon compression
+    width_closed :  width of the bandgap being closed
+    frequency_opened : frequency of bandgap center being opened upon compression
+    width_opened : width of the bandgap being opened
+    
+    """
     def acoustic_bandgap_shift(R, k_bond):
 
         def gap_objective(frequency, frequency_center, k_fit):
@@ -754,8 +753,8 @@ def acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed
             return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
 
         #evaluate biasing width with 2 times inverse variance for the gap widths
-        k_fit_closed = 0.5/(width_closed**2) 
-        k_fit_opened = 0.5/(width_opened**2) 
+        k_fit_closed = 2.0/(width_closed**2) 
+        k_fit_opened = 2.0/(width_opened**2) 
 
 
         result = forbidden_states_compression_NOMM(R, k_bond, system, shift, displacement)
@@ -790,7 +789,7 @@ def generate_acoustic(run, perturbation):
     w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
-    k_fit = 0.5/(dw**2) 
+    k_fit = 2.0/(dw**2) 
     poisson_factor = 0.0
     system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
@@ -840,14 +839,14 @@ def generate_acoustic(run, perturbation):
     prev_gradient_max_R = 0
     
     for i in range(opt_steps):
-        #auxetic gradeints 
-        gradients_auxetic_k = grad_auxetic_k(R_temp, k_temp)
-        gradients_auxetic_R = grad_auxetic_R(R_temp, k_temp)
-        gradients_auxetic_k = grad_auxetic_k(R_temp, k_temp)
-        gradients_auxetic_R = grad_auxetic_R(R_temp, k_temp)
+        
+        #acoustic gradients
+        gradients_k = grad_acoustic_k(R_temp, k_temp)
+        gradients_R = grad_acoustic_R(R_temp, k_temp)
+        
         #evaluate maximum gradients
-        gradient_max__auxetic_k = np.max(np.abs(gradients_k))
-        gradient_max_acoustic_R = np.max(np.abs(gradients_R))
+        gradient_max_k = np.max(np.abs(gradients_k))
+        gradient_max_R = np.max(np.abs(gradients_R))
         
         #calculate difference in maximum gradients
         diff_gradient_max_k = gradient_max_k - prev_gradient_max_k
@@ -898,7 +897,7 @@ def generate_auxetic(run, perturbation):
     w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
-    k_fit = 0.5/(dw**2) 
+    k_fit = 2.0/(dw**2) 
     poisson_factor=40
     system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
@@ -981,7 +980,7 @@ def generate_auxetic_acoustic(run, poisson_init):
     w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
-    k_fit = 0.5/(dw**2) 
+    k_fit = 2.0/(dw**2) 
     poisson_factor=40
     system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
@@ -1098,7 +1097,7 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
     nr_trials=500
     ageing_rate=0.1
     success_frac=0.05
-    k_fit = 0.5/(dw**2) 
+    k_fit = 2.0/(dw**2) 
     poisson_factor=0.0 #important!
     system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
