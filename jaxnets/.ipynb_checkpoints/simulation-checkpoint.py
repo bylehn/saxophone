@@ -1193,10 +1193,15 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
             exit_flag = 2
             break
     
+
+        #normalize gradients 
+        gradients_auxetic_k = utils.normalize_gradients(gradients_auxetic_k)
+        gradients_auxetic_R = utils.normalize_gradients(gradients_auxetic_R)
+        
+        gradients_acoustic_k = utils.normalize_gradients(gradients_acoustic_k)
+        gradients_acoustic_R = utils.normalize_gradients(gradients_acoustic_R)
     
-    
-    
-    
+        #calculate weighted
         gradients_k = poisson_distance*gradients_auxetic_k + bandgap_distance*gradients_acoustic_k
         gradients_R = poisson_distance*gradients_auxetic_R + bandgap_distance*gradients_acoustic_R
         
@@ -1232,6 +1237,188 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
              poisson_target = poisson_target,
              bandgap_distance = bandgap_distance, 
              forbidden_states_init = result.forbidden_states_init,
+             forbidden_states_final = result.forbidden_states_final,
+             exit_flag = exit_flag)
+    return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result
+
+
+def generate_auxetic_acoustic_shift(run, poisson_target, perturbation, frequency_closed, width_closed, frequency_opened, width_opened):
+
+    """
+    run: run id, also used to as random seed
+    poisson_target: the aimed value for the poisson ratio
+    perturbation: absolute value of perturbation of the network for compression
+    frequency_closed : frequency of bandgap center being closed upon compression
+    width_closed :  width of the bandgap being closed
+    frequency_opened : frequency of bandgap center being opened upon compression
+    width_opened : width of the bandgap being opened
+    """
+    #parameters
+    steps = 50
+    write_every = 1
+    delta_perturbation = 0.1
+    number_of_nodes_per_side = 8 #fix this before running
+    nr_trials=500
+    ageing_rate=0.1
+    success_frac=0.05
+    k_fit = 2.0/(width_opened**2) 
+    poisson_factor=0.0 #important!
+    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
+    system.initialize()
+    system.acoustic_parameters(frequency_opened, width_opened, nr_trials, ageing_rate, success_frac)
+    system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
+    displacement = system.displacement
+    shift = system.shift
+    R = system.X
+    k_bond = system.spring_constants
+    
+    
+    
+    
+    opt_steps = 100
+    R_temp = R
+    k_temp = k_bond
+
+    k_fit_closed = 2.0/(width_closed**2) 
+    k_fit_opened = 2.0/(width_opened**2) 
+    
+    exit_flag=0
+    
+    """
+    0: max steps reached
+    1: gradients exceeded
+    2: max k_temp exceeded
+    3: converged
+    
+    """
+    
+    bandgap_contrast = 0
+    
+    result = forbidden_states_compression_NOMM(R_temp, 
+                                              k_temp, 
+                                              system, 
+                                              shift, 
+                                              displacement)
+    
+    poisson = result.poisson
+
+
+    closed_contrast_ratio = utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed) / utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed) 
+    opened_contrast_ratio = utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened) / utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)
+
+    #define distances
+    poisson_distance = 1 - poisson / poisson_target
+    bandgap_distance = 0.5 * (closed_contrast_ratio + opened_contrast_ratio)
+
+    
+    print(" Contrasts:   Closed,   Opened" )
+    print('initial : ', utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed), utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)) 
+    print('final   : ', utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed),  utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened))
+    
+    # acoustic functions
+    acoustic_function = acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed, width_closed, frequency_opened, width_opened)
+    
+    grad_acoustic_R = jit(grad(acoustic_function, argnums=0))
+    grad_acoustic_k = jit(grad(acoustic_function, argnums=1))
+        
+    #auxetic_functions
+    
+    auxetic_function = simulate_auxetic_NOMM_wrapper(R, k_bond, system,shift,displacement)
+    grad_auxetic_R = jit(grad(auxetic_function, argnums=0))
+    grad_auxetic_k = jit(grad(auxetic_function, argnums=1))
+    
+    
+    
+    prev_gradient_max = 0
+
+    for i in range(opt_steps):
+    
+        #acoustic gradients
+        gradients_acoustic_k = grad_acoustic_k(R_temp, k_temp)
+        gradients_acoustic_R = grad_acoustic_R(R_temp, k_temp)
+    
+        #auxetic gradients
+        gradients_auxetic_k = grad_auxetic_k(R_temp, k_temp)
+        gradients_auxetic_R = grad_auxetic_R(R_temp, k_temp)        
+        
+        #evaluate maximum gradients
+        gradient_max = np.max( np.abs( np.vstack((gradients_auxetic_k, 
+                                                  gradients_auxetic_R.ravel()[:, np.newaxis], 
+                                                  gradients_acoustic_k, 
+                                                  gradients_acoustic_R.ravel()[:, np.newaxis] ))))
+    
+        diff_gradient_max = gradient_max - prev_gradient_max
+    
+        #check if gradient exceeded by a lot
+        if diff_gradient_max>100:
+            print(i, gradient_max)
+            exit_flag = 1
+            break
+            
+        prev_gradient_max = gradient_max
+    
+        
+        #check if k_temp has exceeded a threshold
+        if np.max(k_temp)>10:
+            print('max k_temp',np.max(k_temp))
+            exit_flag = 2
+            break
+    
+    
+        #normalize gradients 
+        gradients_auxetic_k = utils.normalize_gradients(gradients_auxetic_k)
+        gradients_auxetic_R = utils.normalize_gradients(gradients_auxetic_R)
+        
+        gradients_acoustic_k = utils.normalize_gradients(gradients_acoustic_k)
+        gradients_acoustic_R = utils.normalize_gradients(gradients_acoustic_R)
+
+
+        #calculate weighted gradients
+        gradients_k = poisson_distance*gradients_auxetic_k + bandgap_distance*gradients_acoustic_k
+        gradients_R = poisson_distance*gradients_auxetic_R + bandgap_distance*gradients_acoustic_R
+        
+        
+        k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
+        R_temp = utils.update_R(gradients_R, R_temp,0.01)
+    
+        result = forbidden_states_compression_NOMM(R_temp, k_temp, system, shift, displacement)
+    
+        #extract the progress
+        poisson = result.poisson
+    
+        closed_contrast_ratio = utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed) / utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed) 
+        opened_contrast_ratio = utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened) / utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)
+    
+        #define distances
+        poisson_distance = 1 - poisson / poisson_target
+        bandgap_distance = 0.5 * (closed_contrast_ratio + opened_contrast_ratio)
+    
+        
+        if np.abs(poisson_distance) < 0.02 and bandgap_distance < 0.05: 
+            print('converged')
+            exit_flag = 3
+            break
+    
+        
+        print(i, gradient_max, bandgap_distance, poisson_distance,  closed_contrast_ratio , opened_contrast_ratio , poisson)
+
+
+
+    closed_contrasts = [utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed), utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed)]
+    opened_contrasts = [utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened), utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)]
+
+    np.savez(str(run), 
+             R_temp = R_temp, 
+             k_temp = k_temp, 
+             connectivity = system.E,
+             surface_nodes = system.surface_nodes,
+             poisson = poisson, 
+             poisson_target = poisson_target,
+             bandgap_distance = bandgap_distance, 
+             closed_contrast_ratio = closed_contrast_ratio,
+             opened_contrast_ratio = opened_contrast_ratio,
+             closed_contrasts = closed_contrasts,
+             opened_contrasts = opened_contrasts,
              forbidden_states_final = result.forbidden_states_final,
              exit_flag = exit_flag)
     return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result

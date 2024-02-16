@@ -352,3 +352,6 @@ def is_hermitian(matrix):
 def gap_objective(frequency, frequency_center, k_fit):
     
     return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
+
+def normalize_gradients(gradients):
+    return gradients / np.max(np.linalg.norm(gradients,axis=1))
