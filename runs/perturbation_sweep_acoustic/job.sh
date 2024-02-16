@@ -22,7 +22,7 @@ for ii in "${perturbation[@]}"; do
            --output=job_output_%j.txt \
            --nodes=1 \
            --tasks=4 \
-           --mem-per-cpu=6G \
+           --mem-per-cpu=16G \
            --time=03:00:00 \
            --wrap="python ../main.py ${ii}"
     
