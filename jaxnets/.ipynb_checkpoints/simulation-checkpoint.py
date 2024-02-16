@@ -666,10 +666,7 @@ def acoustic_compression_wrapper(system, shift, displacement, k_fit):
         def gap_fitness(frequency, frequency_center, k_fit):
             
             return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
-        
-        #def fitness_energy(forbidden_states, baseline_forbidden_states, k_fit, penalty_rate=50):
-        #    penalty = penalty_rate * max(0, baseline_forbidden_states - forbidden_states)
-        #    return k_fit * forbidden_states + penalty
+
 
         result = forbidden_states_compression(R, k_bond, system, shift, displacement)
         # Fitness energy for the initial state with a penalty for reducing forbidden states
@@ -695,9 +692,6 @@ def acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit, poisso
             
             return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
         
-        #def fitness_energy(forbidden_states, baseline_forbidden_states, k_fit, penalty_rate=50):
-        #    penalty = penalty_rate * max(0, baseline_forbidden_states - forbidden_states)
-        #    return k_fit * forbidden_states + penalty
 
         result = forbidden_states_compression_NOMM(R, k_bond, system, shift, displacement)
         # Fitness energy for the initial state with a penalty for reducing forbidden states
@@ -738,6 +732,42 @@ def acoustic_auxetic_maintainer_wrapper(system, shift, displacement, k_fit, pois
         #return result.forbidden_states_init, result.forbidden_states_final
         return objective_function
     return acoustic_auxetic_maintainer
+
+
+def acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_init, width_init, frequency_final, width_final):
+    def acoustic_bandgap_shift(R, k_bond):
+        """
+        system: system class
+        shift, displacement : JAX, M.D. standards
+        frequency_init: initial frequency of bandgap center
+        width_init: initial width of the bandgap
+        frequency_final: final frequency of bandgap center
+        width_init: initial width of the bandgap
+        """
+        def gap_fitness(frequency, frequency_center, k_fit):
+            
+            return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
+
+        
+        k_fit_1
+        
+
+        result = forbidden_states_compression_NOMM(R, k_bond, system, shift, displacement)
+        # Fitness energy for the initial state with a penalty for reducing forbidden states
+        fit_init = gap_fitness(result.frequency_init, system.frequency_center, k_fit)
+
+        # Fitness energy for the final state
+        fit_final = gap_fitness(result.frequency_final, system.frequency_center, k_fit)
+
+        # Weighted objective function: Heavily weight the final state's energy
+        objective_function = fit_final -fit_init
+        
+        #return result.forbidden_states_init, result.forbidden_states_final
+        return objective_function
+    return acoustic_compression_grad_NOMM
+
+
+#Generate Functional Network Functions for Parameter Sweeps
 
 def generate_acoustic(run, perturbation):
 
