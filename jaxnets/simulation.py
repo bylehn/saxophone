@@ -1128,31 +1128,34 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
     
     bandgap_contrast = 0
     
-    result = simulation.forbidden_states_compression_NOMM(R_temp, 
+    result = forbidden_states_compression_NOMM(R_temp, 
                                                           k_temp, 
                                                           system, 
                                                           shift, 
                                                           displacement)
     
     poisson = result.poisson
+    poisson_init = poisson
     forbidden_states_init = result.forbidden_states_init
     forbidden_states_final = result.forbidden_states_final
+
+    poisson_bias = poisson_init - poisson_target
     
-    poisson_distance = np.maximum(0, 1 - poisson / poisson_target)
+    poisson_distance = 1 + (poisson - poisson_target)
     bandgap_distance = forbidden_states_final/forbidden_states_init
     
     
     print('initial forbidden states: ', forbidden_states_init) 
     
     # acoustic functions
-    acoustic_function = simulation.acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit, poisson_factor)
+    acoustic_function = acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit, poisson_factor)
     
     grad_acoustic_R = jit(grad(acoustic_function, argnums=0))
     grad_acoustic_k = jit(grad(acoustic_function, argnums=1))
     
     #auxetic_functions
     
-    auxetic_function = simulation.simulate_auxetic_NOMM_wrapper(R, k_bond, system,shift,displacement)
+    auxetic_function = simulate_auxetic_NOMM_wrapper(R, k_bond, system,shift,displacement)
     grad_auxetic_R = jit(grad(auxetic_function, argnums=0))
     grad_auxetic_k = jit(grad(auxetic_function, argnums=1))
     
@@ -1209,7 +1212,7 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
         R_temp = utils.update_R(gradients_R, R_temp,0.01)
     
-        result = simulation.forbidden_states_compression_NOMM(R_temp, k_temp, system, shift, displacement)
+        result = forbidden_states_compression_NOMM(R_temp, k_temp, system, shift, displacement)
     
         #extract the progress
         poisson = result.poisson
