@@ -784,7 +784,7 @@ def generate_acoustic(run, perturbation):
     delta_perturbation = 0.1
     number_of_nodes_per_side = 10
     nr_trials=500
-    dw=0.1
+    dw=0.2
     w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
@@ -1092,7 +1092,7 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
-    number_of_nodes_per_side = 8
+    number_of_nodes_per_side = 10
     nr_trials=500
     ageing_rate=0.1
     success_frac=0.05
