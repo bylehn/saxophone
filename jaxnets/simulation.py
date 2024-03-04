@@ -691,7 +691,6 @@ def acoustic_compression_nomm_wrapper(system, shift, displacement, k_fit, poisso
         def gap_objective(frequency, frequency_center, k_fit):
             
             return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
-        
 
         result = forbidden_states_compression_NOMM(R, k_bond, system, shift, displacement)
         # Fitness energy for the initial state with a penalty for reducing forbidden states
@@ -891,7 +890,7 @@ def generate_auxetic(run, perturbation):
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
-    number_of_nodes_per_side = 7
+    number_of_nodes_per_side = 10
     nr_trials=500
     dw=0.2
     w_c=2.0
@@ -1141,8 +1140,13 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
 
  
     
+<<<<<<< HEAD
     poisson_distance = (poisson - poisson_target) / poisson_bias
     bandgap_distance = forbidden_states_final / forbidden_states_init
+=======
+    poisson_distance = 1 - poisson / poisson_target
+    bandgap_distance = forbidden_states_final/forbidden_states_init
+>>>>>>> main
     
     
     print('initial forbidden states: ', forbidden_states_init) 
@@ -1220,7 +1224,11 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
         forbidden_states_final = result.forbidden_states_final
     
         #update distances
+<<<<<<< HEAD
         poisson_distance = (poisson - poisson_target) / poisson_bias
+=======
+        poisson_distance = 1 - poisson / poisson_target
+>>>>>>> main
         bandgap_distance = forbidden_states_final / forbidden_states_init
     
         
@@ -1238,6 +1246,9 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
              k_temp = k_temp, 
              poisson = poisson, 
              poisson_target = poisson_target,
+             perturbation = perturbation,
+             connectivity = system.E,
+             surface_nodes = system.surface_nodes,
              bandgap_distance = bandgap_distance, 
              forbidden_states_init = result.forbidden_states_init,
              forbidden_states_final = result.forbidden_states_final,

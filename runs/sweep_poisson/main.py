@@ -11,25 +11,30 @@ import networkx as nx
 import sys
 sys.path.insert(0, '/scratch/midway3/bylehn/auxetic_networks_jaxmd/')  # Adds the parent directory to sys.path
 import jaxnets.visualize as visualize
+import jaxnets.visualize as visualize
 import jaxnets.utils as utils
 import jaxnets.simulation as simulation
 
 import time
 
-perturbation = onp.float64(sys.argv[1])
 
-start = 0
-end = 25
+# %%
 
+
+poisson_target = onp.float64(sys.argv[1])
+dw = 0.1
+w_c = 2.0
+perturbation = 2.0
+num_of_runs = 5
 results=[]
-for run in range(start, end):
-    poisson, exit_flag, R_temp, k_temp, system, shift, displacement = simulation.generate_auxetic(run, perturbation)
-    results.append([run, perturbation, poisson, exit_flag])
+for run in range(num_of_runs):
+    poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result = simulation.generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, dw)
+    results.append([run, poisson_distance, bandgap_distance, exit_flag])
 
 
 
-results = np.array(results)
-onp.savetxt('results.txt', results ,fmt='%i %.5f %i')
+results=np.array(results)
+np.savetxt('results.txt',np.array(results),fmt='%i %.5f %i')
 
 
 # %%
