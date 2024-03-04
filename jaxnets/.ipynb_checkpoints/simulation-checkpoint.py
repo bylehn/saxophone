@@ -1135,14 +1135,14 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
                                                           displacement)
     
     poisson = result.poisson
-    poisson_init = poisson
+    poisson_bias = np.abs(poisson-poisson_target)  # distance bias - slower distance decline for larger difference.
     forbidden_states_init = result.forbidden_states_init
     forbidden_states_final = result.forbidden_states_final
 
-    poisson_bias = poisson_init - poisson_target
+ 
     
-    poisson_distance = 1 + (poisson - poisson_target)
-    bandgap_distance = forbidden_states_final/forbidden_states_init
+    poisson_distance = (poisson - poisson_target) / poisson_bias
+    bandgap_distance = forbidden_states_final / forbidden_states_init
     
     
     print('initial forbidden states: ', forbidden_states_init) 
@@ -1220,7 +1220,7 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
         forbidden_states_final = result.forbidden_states_final
     
         #update distances
-        poisson_distance = np.maximum(0 , 1 - poisson / poisson_target)
+        poisson_distance = (poisson - poisson_target) / poisson_bias
         bandgap_distance = forbidden_states_final / forbidden_states_init
     
         
@@ -1304,13 +1304,14 @@ def generate_auxetic_acoustic_shift(run, poisson_target, perturbation, frequency
                                               displacement)
     
     poisson = result.poisson
+    poisson_bias = np.abs(poisson-poisson_target)
 
 
     closed_contrast_ratio = utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed) / utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed) 
     opened_contrast_ratio = utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened) / utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)
 
     #define distances
-    poisson_distance = 1 - poisson / poisson_target
+    poisson_distance = (poisson - poisson_target) / poisson_bias
     bandgap_distance = 0.5 * (closed_contrast_ratio + opened_contrast_ratio)
 
     
@@ -1393,7 +1394,7 @@ def generate_auxetic_acoustic_shift(run, poisson_target, perturbation, frequency
         opened_contrast_ratio = utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened) / utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)
     
         #define distances
-        poisson_distance = 1 - poisson / poisson_target
+        poisson_distance = (poisson - poisson_target) / poisson_bias
         bandgap_distance = 0.5 * (closed_contrast_ratio + opened_contrast_ratio)
     
         
