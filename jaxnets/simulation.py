@@ -784,7 +784,7 @@ def generate_acoustic(run, perturbation):
     delta_perturbation = 0.1
     number_of_nodes_per_side = 10
     nr_trials=500
-    dw=0.1
+    dw=0.2
     w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
