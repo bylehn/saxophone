@@ -1259,7 +1259,7 @@ def generate_auxetic_acoustic_shift(run, poisson_target, perturbation, frequency
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
-    number_of_nodes_per_side = 8 #fix this before running
+    number_of_nodes_per_side = 10 #fix this before running
     nr_trials=500
     ageing_rate=0.1
     success_frac=0.05
