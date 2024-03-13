@@ -1079,7 +1079,7 @@ def generate_auxetic_acoustic(run, poisson_init):
 
 
 
-def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, dw):
+def generate_auxetic_acoustic_adaptive(run, size, poisson_target, perturbation, w_c, dw):
 
     """
     run: run id, also used to as random seed
@@ -1092,13 +1092,12 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
-    number_of_nodes_per_side = 10
     nr_trials=500
     ageing_rate=0.1
     success_frac=0.05
     k_fit = 2.0/(dw**2) 
     poisson_factor=0.0 #important!
-    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
+    system = utils.System(size, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
@@ -1140,13 +1139,8 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
 
  
     
-<<<<<<< HEAD
-    poisson_distance = (poisson - poisson_target) / poisson_bias
-    bandgap_distance = forbidden_states_final / forbidden_states_init
-=======
     poisson_distance = 1 - poisson / poisson_target
     bandgap_distance = forbidden_states_final/forbidden_states_init
->>>>>>> main
     
     
     print('initial forbidden states: ', forbidden_states_init) 
@@ -1224,11 +1218,7 @@ def generate_auxetic_acoustic_adaptive(run, poisson_target, perturbation, w_c, d
         forbidden_states_final = result.forbidden_states_final
     
         #update distances
-<<<<<<< HEAD
-        poisson_distance = (poisson - poisson_target) / poisson_bias
-=======
         poisson_distance = 1 - poisson / poisson_target
->>>>>>> main
         bandgap_distance = forbidden_states_final / forbidden_states_init
     
         
