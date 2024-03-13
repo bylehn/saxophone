@@ -6,6 +6,9 @@ from IPython.display import HTML, display
 import jax.numpy as np
 import numpy as onp
 import jaxnets.simulation as simulation
+import matplotlib as mpl
+
+mpl.rcParams.update({'font.size': 28})
 sns.set_style(style='white')
 
 def format_plot(x, y):
@@ -48,7 +51,7 @@ def makemovie(N, G, traj, amp, xylims, stride=10):
         return plt
 
     # Create the animation
-    fig, ax = plt.subplots(figsize=(5, 5))
+    fig, ax = plt.subplots(figsize=(10, 10))
     ani = FuncAnimation(fig, update, frames=range(0, len(traj['position']), stride), init_func=init, blit=False)
     #ani.save('example.gif', writer='imagemagick')
     # Display the animation
@@ -76,7 +79,7 @@ def makemovie_bondwidth(system, k, traj, amp=1., xylims=9., stride=10):
         R_plt = R_0 + amp * (R_plt - R_0)
 
         pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
-        nx.draw_networkx_edges(system.G, pos, width=1*k, alpha=0.6,edge_color='k')
+        nx.draw_networkx_edges(system.G, pos, width=2*k, alpha=0.6,edge_color='k')
         plt.xlim([0, xylims])
         plt.ylim([0, xylims])
 
@@ -84,7 +87,7 @@ def makemovie_bondwidth(system, k, traj, amp=1., xylims=9., stride=10):
         return plt
 
     # Create the animation
-    fig, ax = plt.subplots(figsize=(5, 5))
+    fig, ax = plt.subplots(figsize=(10, 10))
     ani = FuncAnimation(fig, update, frames=range(0, len(traj['position']), stride), init_func=init, blit=False)
     ani.save('compressedexample.gif', writer='imagemagick')
     # Display the animation
@@ -117,7 +120,7 @@ def makemovie_bondwidth_labels(system, k, traj, amp=1., xylims=9., stride=10):
         plt.axis('on')
         return plt
 
-    fig, ax = plt.subplots(figsize=(5, 5))
+    fig, ax = plt.subplots(figsize=(10, 10))
     ani = FuncAnimation(fig, update, frames=range(0, len(traj['position']), stride), init_func=init, blit=False)
     ani.save('compressedexample.gif', writer='imagemagick')
     display(HTML(ani.to_jshtml()))
@@ -141,17 +144,17 @@ def makemovieDOS(system, k, traj,stride=10):
         R_plt = traj['position'][frame]
         C = simulation.create_compatibility(system, R_plt)
         D, V, forbidden_states,_ = simulation.get_forbidden_states(C, k, system)
-        plt.hist(onp.sqrt(onp.abs(D)), bins=onp.arange(-0.025, 4.025, 0.05), density=False)
+        plt.hist(onp.sqrt(onp.abs(D)), bins=onp.arange(-0.025, 3.025, 0.05), density=False)
         plt.xlabel(r'$\omega$')
-        plt.ylabel(r'$\rho(\omega)$')
+        plt.ylabel(r'$C (\omega)$')
         print(forbidden_states)
-
+        plt.gca().yaxis.set_major_locator(mpl.ticker.MaxNLocator(integer=True))
         #plt.ylim(0,5)
         plt.axis('on')
         return plt
 
     # Create the animation
-    fig, ax = plt.subplots(figsize=(5, 5))
+    fig, ax = plt.subplots(figsize=(10, 10))
     ani = FuncAnimation(fig, update, frames=range(0, len(traj['position']), stride), init_func=init, blit=False)
     ani.save('compressedDOS0.2.gif', writer='imagemagick')
     # Display the animation
