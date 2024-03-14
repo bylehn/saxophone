@@ -1139,7 +1139,7 @@ def generate_auxetic_acoustic_adaptive(run, size, poisson_target, perturbation, 
 
  
     
-    poisson_distance = 1 - poisson / poisson_target
+    poisson_distance = (poisson - poisson_target) / poisson_bias
     bandgap_distance = forbidden_states_final/forbidden_states_init
     
     
@@ -1218,7 +1218,7 @@ def generate_auxetic_acoustic_adaptive(run, size, poisson_target, perturbation, 
         forbidden_states_final = result.forbidden_states_final
     
         #update distances
-        poisson_distance = 1 - poisson / poisson_target
+        poisson_distance = (poisson - poisson_target) / poisson_bias
         bandgap_distance = forbidden_states_final / forbidden_states_init
     
         
