@@ -32,6 +32,7 @@ Result_forbidden_modes = namedtuple('Result', [
 
 def simulate_auxetic(R,
                      k_bond,
+                     k_angle,
                      system,
                      shift,
                      displacement
@@ -126,7 +127,7 @@ def simulate_auxetic(R,
         return R_perturbed, log, cumulative_perturbation
 
     def energy_fn(R, system, **kwargs):
-        angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
+        angle_energy = np.sum(energies.angle_energy(system, k_angle, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
         node_energy = energy.soft_sphere_pair(displacement, sigma=0.3, epsilon=2.0)(R, **kwargs)
@@ -159,6 +160,7 @@ def simulate_auxetic(R,
 
 def simulate_auxetic_wrapper(R,
                      k_bond,
+                     k_angle,
                      system,
                      shift,
                      displacement
@@ -167,7 +169,8 @@ def simulate_auxetic_wrapper(R,
     Simulates the auxetic process using a System instance.
 
     R: position matrix  
-    k_bond: spring constant matrix
+    k_bond: spring constant vector
+    k_angle: angle constant vector
     system: System instance containing the state and properties of the system   
     shift: shift parameter for the FIRE minimization
     displacement: displacement function             
@@ -179,8 +182,9 @@ def simulate_auxetic_wrapper(R,
 
 
     def simulate_auxetic_optimize(R,
-                         k_bond
-                         ):
+                                k_bond,
+                                k_angle
+                                     ):
         """
         wrapped function.
     
@@ -192,7 +196,7 @@ def simulate_auxetic_wrapper(R,
         poisson: poisson ratio
     
         """             
-        poisson, _, _, _ = simulate_auxetic(R, k_bond, system, shift, displacement)
+        poisson, _, _, _ = simulate_auxetic(R, k_bond, k_angle, system, shift, displacement)
     
         return poisson
     return simulate_auxetic_optimize
@@ -689,7 +693,7 @@ def generate_auxetic(run, size, perturbation):
     success_frac=0.05
     k_fit = 2.0/(dw**2) 
     poisson_factor=40
-    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
+    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
@@ -697,12 +701,14 @@ def generate_auxetic(run, size, perturbation):
     shift = system.shift
     R = system.X
     k_bond = system.spring_constants
-    auxetic_function = simulate_auxetic_wrapper(R, k_bond, system,shift,displacement)
+    k_angle = 0.1*np.ones(system.angle_triplets.shape[0])
+    auxetic_function = simulate_auxetic_wrapper(R, k_bond, k_angle, system,shift,displacement)
     grad_auxetic = jit(grad(auxetic_function, argnums=0))
     grad_auxetic_k = jit(grad(auxetic_function, argnums=1))
     opt_steps = 200
     R_temp = R
     k_temp = k_bond
+    k_angle_temp = k_angle
     poisson = -10
     exit_flag=0
     """
@@ -717,8 +723,8 @@ def generate_auxetic(run, size, perturbation):
     for i in range(opt_steps):
 
         #evaluate gradients for bond stiffness and positions
-        gradients_R = grad_auxetic(R_temp, k_temp)
-        gradients_k = grad_auxetic_k(R_temp, k_temp)
+        gradients_R = grad_auxetic(R_temp, k_temp, k_angle_temp)
+        gradients_k = grad_auxetic_k(R_temp, k_temp, k_angle_temp)
 
         #evaluate maximum gradients
         gradient_max_k = np.max(np.abs(gradients_k))
@@ -748,12 +754,13 @@ def generate_auxetic(run, size, perturbation):
 
         #evaluate new fitness for reporting
         poisson, log, R_init, R_final = simulate_auxetic(R_temp,
-                                                                k_temp,
-                                                                system,
-                                                                shift,
-                                                                displacement)
+                                                        k_temp,
+                                                        k_angle_temp,
+                                                        system,
+                                                        shift,
+                                                        displacement)
         print(i, gradient_max_k, gradient_max_R,  poisson)
-    np.savez(str(run), R_temp = R_temp, k_temp = k_temp, perturbation = perturbation, connectivity = system.E,
+    np.savez(str(run), R_temp = R_temp, k_temp = k_temp, k_angle_temp = k_angle_temp, perturbation = perturbation, connectivity = system.E,
              surface_nodes = system.surface_nodes, poisson = poisson, exit_flag = exit_flag)
     return poisson, exit_flag, R_temp, k_temp, system, shift, displacement
 

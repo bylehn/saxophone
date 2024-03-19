@@ -17,7 +17,7 @@ class System:
         self.random_seed = random_seed
         self.r_circle = r_circle
         self.dx = dx
-        self.k_angle = k_angle
+#        self.k_angle = k_angle
 
         # Initialize attributes
         self.N = None

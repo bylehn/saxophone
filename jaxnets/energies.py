@@ -28,7 +28,7 @@ def constrained_force_fn(R, energy_fn, mask):
 def compute_force_norm(fire_state):
     return np.linalg.norm(fire_state.force)
 
-def angle_energy(system, triplets, displacement_fn, positions):
+def angle_energy(system, k_angle, triplets, displacement_fn, positions):
     """
     Calculates the harmonic angle energy for a triplet of nodes.
 
@@ -48,7 +48,7 @@ def angle_energy(system, triplets, displacement_fn, positions):
         return compute_angle_between_triplet(displacement_fn, pi, pj, pk)
     
     angles = vmap(angle)(triplets)
-    return 0.5 * system.k_angle * (angles - system.initial_angles)**2
+    return 0.5 *k_angle * (angles - system.initial_angles)**2
 
 # Assume angle_triplets is an array of shape (num_angles, 3)
 # Each row in angle_triplets represents a set of indices (i, j, k)
