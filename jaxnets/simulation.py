@@ -886,11 +886,10 @@ def generate_acoustic(run, perturbation):
              exit_flag = exit_flag)
     return bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement
 
-def generate_auxetic(run, perturbation):
+def generate_auxetic(run, perturbation, size):
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
-    number_of_nodes_per_side = 10
     nr_trials=500
     dw=0.2
     w_c=2.0
@@ -898,7 +897,7 @@ def generate_auxetic(run, perturbation):
     success_frac=0.05
     k_fit = 2.0/(dw**2) 
     poisson_factor=40
-    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
+    system = utils.System(size, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)

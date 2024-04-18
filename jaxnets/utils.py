@@ -263,16 +263,6 @@ def update_R(gradients, R_current, max_disp):
     R_updated = R_current - max_disp*gradients_normalized
     return R_updated
 
-
-@jit
-def update_R(gradients, R_current, max_disp):
-    """
-    Updates positions based on gradients.
-    """
-    gradients_normalized = gradients / np.max(np.linalg.norm(gradients,axis=1))
-    R_updated = R_current - max_disp*gradients_normalized
-    return R_updated
-
 def remove_zero_rows(log_dict):
     """
     Remove rows (entries) in the log dictionary that are all zeros.

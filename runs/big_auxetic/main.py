@@ -20,16 +20,15 @@ import time
 # %%
 
 
-poisson_target = onp.float64(sys.argv[1])
 dw = 0.1
 w_c = 2.0
 perturbation = 2.0
-num_of_runs = 5
-size = 10
+num_of_runs = 10
+size = 20
 results=[]
-for run in range(6, 11):
-    poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result = simulation.generate_auxetic_acoustic_adaptive(run, size, poisson_target, perturbation, w_c, dw)
-    results.append([run, poisson_distance, bandgap_distance, exit_flag])
+for run in range(num_of_runs):
+    poisson, exit_flag, R_temp, k_temp, system, shift, displacement = simulation.generate_auxetic(run, perturbation, size)
+    results.append([run, poisson, exit_flag])
 
 
 

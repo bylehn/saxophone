@@ -1,0 +1,69 @@
+---
+title: "Results from auxetic-acoustic runs"
+format:
+  html
+jupyter: python3
+execute:
+  echo: false
+#editor: visual
+---
+### Sweeping poisson ratios
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+```
+
+```{python}
+perturbation_list = [-1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+
+# Set the folder_path to the 'runs/sweep_poisson' subdirectory from the current working directory
+folder_path = os.path.join(os.getcwd(), 'runs', 'sweep_poisson')
+
+# List all directories within the folder_path
+folder_list = [folder for folder in os.listdir(folder_path) if os.path.isdir(os.path.join(folder_path, folder))]
+
+results = []
+for folder_name in folder_list:
+    # Generate the full path to each folder
+    full_folder_path = os.path.join(folder_path, folder_name)
+    file_list = os.listdir(full_folder_path)
+    for file_name in file_list:
+        if file_name.endswith('.npz'):
+            # Load the .npz file from its full path
+            file = np.load(os.path.join(full_folder_path, file_name))
+            results.append([
+                file['bandgap_distance'], 
+                file['exit_flag'], 
+                file['forbidden_states_init'], 
+                file['forbidden_states_final'], 
+                file['poisson'], 
+                file['poisson_target'], 
+                int(file_name[0])  # Assumes the file name starts with a digit
+            ])
+
+# Convert results to a NumPy array and print
+results = np.array(results)
+```
+
+```{python}
+#| label: fig-poissonratios
+#| fig-cap: "Poisson ratio achieved vs target. Color bar represents bandgap difference."
+plt.scatter(results[:,5],results[:,4], c=results[:,0], marker='o', cmap='jet', vmin=0, vmax=1)
+plt.xlim(-1,1)
+plt.xlabel('poisson ratio target')
+plt.ylabel('poisson ratio achieved')
+plt.colorbar()
+#plt.gca().set_aspect(10, adjustable='box')
+#plt.legend()
+plt.show()
+```
+
+::: {.notes}
+As we can see from @fig-poissonratios, beyond a poisson ratio target of $\pm 0.3$, we are not able to achieve it, and the curve flattens out. Interestingly, the color suggests that achieving a larger bandgap at negative poisson ratios is harder than at positive ratios. The next steps are to see if we can achieve better poisson ratios by decreasing the sphere size. 
+:::
+
+### Decreasing sphere radius
+
+::: {.notes}
