@@ -23,7 +23,6 @@ jax-md = "^0.2.8"
 jax = "^0.3.13"  # Use the latest version suitable for your project
 jaxlib = "*"  # Use the latest version suitable for your project
 
-
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.25.2"
 

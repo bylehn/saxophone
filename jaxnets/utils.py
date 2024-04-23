@@ -5,8 +5,9 @@ import networkx as nx
 from scipy.spatial import Delaunay
 from jax import vmap
 from jax import jit
-from jax import random  
-from jax.config import config; config.update("jax_enable_x64", True)
+from jax import random 
+import jax
+jax.config.update("jax_enable_x64", True)
 from jax_md import quantity, space
 
 

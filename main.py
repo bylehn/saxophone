@@ -2,7 +2,8 @@
 import jax.numpy as np
 import numpy as onp
 from jax import random
-from jax.config import config; config.update("jax_enable_x64", True); config.update("jax_debug_nans", False)
+import jax
+jax.config.update("jax_enable_x64", True); jax.config.update("jax_debug_nans", False)
 from jax_md import space
 from jax import random, grad
 from jax import jit, vmap
