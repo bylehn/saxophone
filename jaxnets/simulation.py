@@ -272,7 +272,7 @@ def simulate_auxetic_NOMM(R,
         angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
-        node_energy = energy.soft_sphere_pair(displacement, sigma=0.3, epsilon=2.0)(R, **kwargs)
+        node_energy = energy.soft_sphere_pair(displacement, sigma=0.05, epsilon=2.0)(R, **kwargs)
 
         return bond_energy + angle_energy + node_energy
 
@@ -961,7 +961,7 @@ def generate_auxetic(run, perturbation, size):
                                                                 shift,
                                                                 displacement)
         print(i, gradient_max_k, gradient_max_R,  poisson)
-    np.savez(str(run), R_temp = R_temp, k_temp = k_temp, perturbation = perturbation, connectivity = system.E,
+    onp.savez(str(run), R_temp = R_temp, k_temp = k_temp, perturbation = perturbation, connectivity = system.E,
              surface_nodes = system.surface_nodes, poisson = poisson, exit_flag = exit_flag)
     return poisson, exit_flag, R_temp, k_temp, system, shift, displacement
 

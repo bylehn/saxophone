@@ -20,6 +20,40 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -93,12 +127,12 @@ window.Quarto = {
 
 <section id="sweeping-poisson-ratios" class="level3">
 <h3 class="anchored" data-anchor-id="sweeping-poisson-ratios">Sweeping poisson ratios</h3>
-<div id="cell-fig-poissonratios" class="cell" data-execution_count="3">
+<div id="cell-fig-poissonratios" class="cell" data-execution_count="5">
 <div class="cell-output cell-output-display">
 <div id="fig-poissonratios" class="quarto-figure quarto-figure-center quarto-float anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-poissonratios-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
-<img src="jaxnets_files/figure-html/fig-poissonratios-output-1.png" width="571" height="434" class="figure-img">
+<img src="jaxnets_files/figure-html/fig-poissonratios-output-1.png" width="589" height="449" class="figure-img">
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-poissonratios-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 Figure&nbsp;1: Poisson ratio achieved vs target. Color bar represents bandgap difference.
@@ -109,6 +143,77 @@ Figure&nbsp;1: Poisson ratio achieved vs target. Color bar represents bandgap di
 </div>
 <div class="notes">
 <p>As we can see from <a href="#fig-poissonratios" class="quarto-xref">Figure&nbsp;1</a>, beyond a poisson ratio target of <span class="math inline">\(\pm 0.3\)</span>, we are not able to achieve it, and the curve flattens out. Interestingly, the color suggests that achieving a larger bandgap at negative poisson ratios is harder than at positive ratios. The next steps are to see if we can achieve better poisson ratios by decreasing the sphere size.</p>
+</div>
+</section>
+<section id="decreasing-sphere-radius" class="level3">
+<h3 class="anchored" data-anchor-id="decreasing-sphere-radius">Decreasing sphere radius</h3>
+<div class="notes">
+<p>To decrease the sphere radius, I modified this part of the code:</p>
+<div class="code-with-filename">
+<div class="code-with-filename-file">
+<pre><strong>jaxnets/simulation.py</strong></pre>
+</div>
+<div class="sourceCode" id="cb1" data-filename="jaxnets/simulation.py" data-startfrom="271"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python" style="counter-reset: source-line 270;"><span id="cb1-271"><a href="#cb1-271"></a>    <span class="kw">def</span> energy_fn(R, system, <span class="op">**</span>kwargs):</span>
+<span id="cb1-272"><a href="#cb1-272"></a>        angle_energy <span class="op">=</span> np.<span class="bu">sum</span>(energies.angle_energy(system, system.angle_triplets, displacement, R))</span>
+<span id="cb1-273"><a href="#cb1-273"></a>        <span class="co"># Bond energy (assuming that simple_spring_bond is JAX-compatible)</span></span>
+<span id="cb1-274"><a href="#cb1-274"></a>        bond_energy <span class="op">=</span> energy.simple_spring_bond(displacement, system.E, length<span class="op">=</span>system.distances, epsilon<span class="op">=</span>k_bond[:, <span class="dv">0</span>])(R, <span class="op">**</span>kwargs)</span>
+<span id="cb1-275"><a href="#cb1-275"></a>        node_energy <span class="op">=</span> energy.soft_sphere_pair(displacement, sigma<span class="op">=</span><span class="fl">0.05</span>, epsilon<span class="op">=</span><span class="fl">2.0</span>)(R, <span class="op">**</span>kwargs)</span>
+<span id="cb1-276"><a href="#cb1-276"></a></span>
+<span id="cb1-277"><a href="#cb1-277"></a>        <span class="cf">return</span> bond_energy <span class="op">+</span> angle_energy <span class="op">+</span> node_energy</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>In line 275 I change the sigma.</p>
+</div>
+<div id="cell-fig-sphere-poisson" class="cell" data-execution_count="7">
+<div class="cell-output cell-output-display">
+<div id="fig-sphere-poisson" class="quarto-figure quarto-figure-center quarto-float anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-sphere-poisson-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="jaxnets_files/figure-html/fig-sphere-poisson-output-1.png" width="615" height="434" class="figure-img">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-sphere-poisson-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;2: Poisson ratio achieved vs target for LJ radius of 0.2.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="notes">
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-1-contents" aria-controls="callout-1" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+These are comments from an older run
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-1" class="callout-1-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p><em>When I first ran these, I ran only for <span class="math inline">\(\sigma = 0.2\)</span> and tried to use different target poisson ratios, but the run I used doesn’t use target poisson, it just tries to minimize poisson ratio.</em></p>
+<p>This did not work as expected. Each run is identical to each other, because poisson target is not an input to the <code>generate_auxetic()</code> function, as it just tries to minimize the poisson ratio. What is interesting tho is that all of the 4 runs are identical. Should they be? Yes, because the random seed is fixed as 26+run,</p>
+<div class="code-with-filename">
+<div class="code-with-filename-file">
+<pre><strong>jaxnets/simulation.py</strong></pre>
+</div>
+<div class="sourceCode" id="cb2" data-filename="jaxnets/simulation.py" data-startfrom="889"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python" style="counter-reset: source-line 888;"><span id="cb2-889"><a href="#cb2-889"></a><span class="kw">def</span> generate_auxetic(run, perturbation, size):</span>
+<span id="cb2-890"><a href="#cb2-890"></a>    steps <span class="op">=</span> <span class="dv">50</span></span>
+<span id="cb2-891"><a href="#cb2-891"></a>    write_every <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb2-892"><a href="#cb2-892"></a>    delta_perturbation <span class="op">=</span> <span class="fl">0.1</span></span>
+<span id="cb2-893"><a href="#cb2-893"></a>    nr_trials<span class="op">=</span><span class="dv">500</span></span>
+<span id="cb2-894"><a href="#cb2-894"></a>    dw<span class="op">=</span><span class="fl">0.2</span></span>
+<span id="cb2-895"><a href="#cb2-895"></a>    w_c<span class="op">=</span><span class="fl">2.0</span></span>
+<span id="cb2-896"><a href="#cb2-896"></a>    ageing_rate<span class="op">=</span><span class="fl">0.1</span></span>
+<span id="cb2-897"><a href="#cb2-897"></a>    success_frac<span class="op">=</span><span class="fl">0.05</span></span>
+<span id="cb2-898"><a href="#cb2-898"></a>    k_fit <span class="op">=</span> <span class="fl">2.0</span><span class="op">/</span>(dw<span class="op">**</span><span class="dv">2</span>) </span>
+<span id="cb2-899"><a href="#cb2-899"></a>    poisson_factor<span class="op">=</span><span class="dv">40</span></span>
+<span id="cb2-900"><a href="#cb2-900"></a>    system <span class="op">=</span> utils.System(size, <span class="dv">26</span><span class="op">+</span>run, <span class="fl">2.0</span>, <span class="fl">0.2</span>, <span class="fl">1e-1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>so since each run is 0-9 they have a different random seed, but all the runs in different poisson ratio folders will be identical for the same number 0-9, so it makes sense. However, it is still useful in the sense that we’re still not getting very negative poisson ratios, max is around <span class="math inline">\(-0.4\)</span></p>
+</div>
+</div>
+</div>
+<p>Also as seen in <a href="#fig-sphere-poisson" class="quarto-xref">Figure&nbsp;2</a>, for the points labeled sigma_0.1, there is a shift towards more negative poisson ratios but still not very significant. Another challenge is that the variance for different runs is very large. Also for <span class="math inline">\(\sigma = 0.1\)</span>, not all the runs completed since it ran out of memory. How can the code be made less memory-intensive? Also, none of the runs are converging, they all have exit-flag 1, which is that gradients are exceeded.</p>
 </div>
 </section>
 
