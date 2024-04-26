@@ -1,7 +1,7 @@
 import jax.numpy as np
 import numpy as onp
 import jax
-jax.config; jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", True) ; jax.config.update("jax_debug_nans", False)
 from jax_md import energy, minimize
 from jax import jit, vmap, grad
 from jax import lax
