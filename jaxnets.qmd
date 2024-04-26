@@ -15,6 +15,8 @@ filters:
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import jaxnets.simulation as simulation
+import jaxnets.utils as utils
 ```
 
 ```{python}
@@ -29,6 +31,7 @@ def extract_data(path):
                 with np.load(os.path.join(full_folder_path, file_name), allow_pickle=True) as file:
                     file_data = {key: file[key] if file[key].size > 1 else file[key].item() for key in file.files}
                     file_data['folder_name'] = folder_name  # Attach folder name to the results
+                    file_data['file_name'] = file_name
                     results.append(file_data)
     return results
 ```
@@ -64,6 +67,29 @@ def plot_results(results, x_key, y_key, color_key=None, x_limits=(-1, 1), cmap='
         print(f"Error: {str(e)}")
     except Exception as e:
         print(f"Unexpected error: {str(e)} - Check data types and array shapes.")
+```
+
+```{python}
+def rerun(results, run_nr):
+    R_key = 'R_temp'
+    R_temp = [data[R_key] for data in results if R_key in data]
+    k_key = 'k_temp'
+    k_temp = [data[k_key] for data in results if k_key in data]
+
+    perturbation = 2.0
+    delta_perturbation = 0.1
+    steps = 50
+    write_every = 1
+    size = 10
+    system = utils.System(size, 26+run_nr, 2.0, 0.2, 1e-1)
+    system.initialize()
+    system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
+    displacement = system.displacement
+    shift = system.shift
+
+    poisson, log, R_init, R_final = simulation.simulate_auxetic_NOMM(R_temp[0], k_temp[0], system, shift, displacement)
+
+    return poisson, log
 ```
 
 ```{python}
@@ -127,12 +153,11 @@ This did not work as expected. Each run is identical to each other, because pois
 so since each run is 0-9 they have a different random seed, but all the runs in different poisson ratio folders will be identical for the same number 0-9, so it makes sense. However, it is still useful in the sense that we're still not getting very negative poisson ratios, max is around $-0.4$
 :::
 
-Also as seen in @fig-sphere-poisson, for the points labeled sigma_0.1, there is a shift towards more negative poisson ratios but still not very significant. Another challenge is that the variance for different runs is very large. Also for $\sigma = 0.1$, not all the runs completed since it ran out of memory. How can the code be made less memory-intensive? Also, none of the runs are converging, they all have exit-flag 1, which is that gradients are exceeded. 
+Also as seen in @fig-sphere-poisson, for the points labeled sigma_0.1, there is a shift towards more negative poisson ratios but still not very significant. Another challenge is that the variance for different runs is very large. Also for $\sigma = 0.1$, not all the runs completed since it ran out of memory. How can the code be made less memory-intensive? Also, none of the runs are converging, they all have exit-flag 1, which is that gradients are exceeded. Is that because the sphere radius is too small? 
 :::
 
 
-#```{python}
-#import jaxnets.visualize as visualize
+```{python}
+poisson, log = rerun(results, 6)
+```
 
-#visualize.makemovie_bondwidth(system, k_temp, log, amp=1., #xylims=10+1, stride=10)
-#```

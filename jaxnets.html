@@ -127,7 +127,7 @@ window.Quarto = {
 
 <section id="sweeping-poisson-ratios" class="level3">
 <h3 class="anchored" data-anchor-id="sweeping-poisson-ratios">Sweeping poisson ratios</h3>
-<div id="cell-fig-poissonratios" class="cell" data-execution_count="5">
+<div id="cell-fig-poissonratios" class="cell" data-execution_count="6">
 <div class="cell-output cell-output-display">
 <div id="fig-poissonratios" class="quarto-figure quarto-figure-center quarto-float anchored">
 <figure class="quarto-float quarto-float-fig figure">
@@ -163,7 +163,7 @@ Figure&nbsp;1: Poisson ratio achieved vs target. Color bar represents bandgap di
 </div>
 <p>In line 275 I change the sigma.</p>
 </div>
-<div id="cell-fig-sphere-poisson" class="cell" data-execution_count="7">
+<div id="cell-fig-sphere-poisson" class="cell" data-execution_count="8">
 <div class="cell-output cell-output-display">
 <div id="fig-sphere-poisson" class="quarto-figure quarto-figure-center quarto-float anchored">
 <figure class="quarto-float quarto-float-fig figure">
@@ -213,10 +213,8 @@ These are comments from an older run
 </div>
 </div>
 </div>
-<p>Also as seen in <a href="#fig-sphere-poisson" class="quarto-xref">Figure&nbsp;2</a>, for the points labeled sigma_0.1, there is a shift towards more negative poisson ratios but still not very significant. Another challenge is that the variance for different runs is very large. Also for <span class="math inline">\(\sigma = 0.1\)</span>, not all the runs completed since it ran out of memory. How can the code be made less memory-intensive? Also, none of the runs are converging, they all have exit-flag 1, which is that gradients are exceeded.</p>
+<p>Also as seen in <a href="#fig-sphere-poisson" class="quarto-xref">Figure&nbsp;2</a>, for the points labeled sigma_0.1, there is a shift towards more negative poisson ratios but still not very significant. Another challenge is that the variance for different runs is very large. Also for <span class="math inline">\(\sigma = 0.1\)</span>, not all the runs completed since it ran out of memory. How can the code be made less memory-intensive? Also, none of the runs are converging, they all have exit-flag 1, which is that gradients are exceeded. Is that because the sphere radius is too small?</p>
 </div>
-<p>#```{python} #import jaxnets.visualize as visualize</p>
-<p>#visualize.makemovie_bondwidth(system, k_temp, log, amp=1., #xylims=10+1, stride=10) #```</p>
 </section>
 
 </main>
