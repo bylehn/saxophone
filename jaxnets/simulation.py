@@ -559,16 +559,13 @@ def acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed
 
 #Generate Functional Network Functions for Parameter Sweeps
 
-def generate_acoustic(run, perturbation):
-
+def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw):
+    #run: kinda a random number
     #parameters
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
-    number_of_nodes_per_side = 10
     nr_trials=500
-    dw=0.2
-    w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
     k_fit = 2.0/(dw**2) 
