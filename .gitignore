@@ -5,4 +5,9 @@
 *.png
 *.gif
 *.csv
-
+*.js
+*.css
+*.json
+*.ttf
+*.woff
+*.eot
