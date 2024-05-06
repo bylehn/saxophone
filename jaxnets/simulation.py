@@ -682,6 +682,24 @@ def generate_acoustic(run, size, perturbation, w_c, dw):
     return bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement
 
 def generate_auxetic(run, size, perturbation):
+    """
+    Generate auxetic network simulation.
+
+    Args:
+        run (int): The run number.
+        size (int): The number of nodes per side.
+        perturbation (float): The perturbation value.
+
+    Returns:
+        tuple: A tuple containing the following:
+            - poisson (float): The Poisson's ratio.
+            - exit_flag (int): The exit flag indicating the reason for termination.
+            - R_temp (ndarray): The updated positions of the nodes.
+            - k_temp (ndarray): The updated spring constants.
+            - system (object): The system object.
+            - shift (float): The shift value.
+            - displacement (float): The displacement value.
+    """
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
@@ -701,7 +719,7 @@ def generate_auxetic(run, size, perturbation):
     shift = system.shift
     R = system.X
     k_bond = system.spring_constants
-    k_angle = 0.1*np.ones(system.angle_triplets.shape[0])
+    k_angle = 0.001*np.ones(system.angle_triplets.shape[0])
     auxetic_function = simulate_auxetic_wrapper(R, k_bond, k_angle, system,shift,displacement)
     grad_auxetic = jit(grad(auxetic_function, argnums=0))
     grad_auxetic_k = jit(grad(auxetic_function, argnums=1))
