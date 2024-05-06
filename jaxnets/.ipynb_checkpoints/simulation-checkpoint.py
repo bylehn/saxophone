@@ -465,7 +465,7 @@ def optimize_ageing_compression(R, system, k_bond, shift, displacement):
     return final_k_bond, final_trial, forbidden_states_init, forbidden_states_final
 
 
-def acoustic_compression_wrapper(system, shift, displacement, k_fit, poisson_factor):
+def acoustic_compression_wrapper(system, shift, displacement, k_fit):
     def acoustic_compression_grad(R, k_bond):
         """
         This function might not be needed since we can just use the forbidden_states_compression, but to 
@@ -483,7 +483,7 @@ def acoustic_compression_wrapper(system, shift, displacement, k_fit, poisson_fac
         fit_final = gap_objective(result.frequency_final, system.frequency_center, k_fit)
 
         # Weighted objective function: Heavily weight the final state's energy
-        objective_function = fit_final -fit_init + poisson_factor*result.poisson
+        objective_function = fit_final -fit_init
         
         #return result.forbidden_states_init, result.forbidden_states_final
         return objective_function
@@ -559,8 +559,9 @@ def acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed
 
 #Generate Functional Network Functions for Parameter Sweeps
 
-def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw):
+def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw, opt_steps):
     #run: kinda a random number
+    
     #parameters
     steps = 50
     write_every = 1
@@ -569,7 +570,6 @@ def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw):
     ageing_rate=0.1
     success_frac=0.05
     k_fit = 2.0/(dw**2) 
-    poisson_factor = 0.0
     system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
@@ -582,7 +582,7 @@ def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw):
  
 
     
-    opt_steps = 200
+    
     R_temp = R
     k_temp = k_bond
     
@@ -608,7 +608,7 @@ def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw):
 
 
     #initialize the grad functions
-    acoustic_function = acoustic_compression_wrapper(system, shift, displacement, k_fit, poisson_factor)
+    acoustic_function = acoustic_compression_wrapper(system, shift, displacement, k_fit)
     
     grad_acoustic_R = jit(grad(acoustic_function, argnums=0))
     grad_acoustic_k = jit(grad(acoustic_function, argnums=1))
@@ -649,7 +649,7 @@ def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw):
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
         R_temp = utils.update_R(gradients_R, R_temp,0.01)
     
-        bandgap_contrast = acoustic_compression_wrapper(system, shift, displacement, k_fit,poisson_factor)(R_temp, k_temp)
+        bandgap_contrast = acoustic_compression_wrapper(system, shift, displacement, k_fit)(R_temp, k_temp)
         
         print(i, np.max(gradients_k),np.max(gradients_R), bandgap_contrast)
 
@@ -666,7 +666,7 @@ def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw):
              exit_flag = exit_flag)
     return bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement
 
-def generate_auxetic(run, perturbation, size):
+def generate_auxetic(run, number_of_nodes_per_side, perturbation, opt_steps):
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
@@ -676,8 +676,7 @@ def generate_auxetic(run, perturbation, size):
     ageing_rate=0.1
     success_frac=0.05
     k_fit = 2.0/(dw**2) 
-    poisson_factor=40
-    system = utils.System(size, 26+run, 2.0, 0.2, 1e-1)
+    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
@@ -688,7 +687,8 @@ def generate_auxetic(run, perturbation, size):
     auxetic_function = simulate_auxetic_wrapper(R, k_bond, system,shift,displacement)
     grad_auxetic = jit(grad(auxetic_function, argnums=0))
     grad_auxetic_k = jit(grad(auxetic_function, argnums=1))
-    opt_steps = 200
+
+    
     R_temp = R
     k_temp = k_bond
     poisson = -10
@@ -745,120 +745,9 @@ def generate_auxetic(run, perturbation, size):
              surface_nodes = system.surface_nodes, poisson = poisson, exit_flag = exit_flag)
     return poisson, exit_flag, R_temp, k_temp, system, shift, displacement
 
-def generate_auxetic_acoustic(run, poisson_init):
-
-    #parameters
-    steps = 50
-    write_every = 1
-    perturbation = 2.0
-    delta_perturbation = 0.1
-    number_of_nodes_per_side = 8
-    nr_trials=500
-    dw=0.2
-    w_c=2.0
-    ageing_rate=0.1
-    success_frac=0.05
-    k_fit = 2.0/(dw**2) 
-    poisson_factor=40
-    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
-    system.initialize()
-    system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
-    system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
-    displacement = system.displacement
-    shift = system.shift
-    R = system.X
-    k_bond = system.spring_constants
-
- 
-
-    
-    opt_steps = 100
-    R_temp = R
-    k_temp = k_bond
-    poisson = -10
-    
-    exit_flag=0
-    
-    """
-    0: max steps reached
-    1: gradients exceeded
-    2: max k_temp exceeded
-    3: converged
-    
-    """
-    
-    bandgap_contrast = 0
-
-    result = simulation.forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
-
-    forbidden_states_init = result.forbidden_states_init
-
-    print('initial forbidden states: ', forbidden_states_init) 
 
 
-
-
-    #initialize the grad functions
-    poisson_factor=3*forbidden_states_init
-    acoustic_function_m= simulation.acoustic_auxetic_maintainer_wrapper(system,shift,displacement,k_fit, poisson_factor, poisson_init)
-    grad_acoustic_mR = jit(grad(acoustic_function_m, argnums=0))
-    grad_acoustic_mk = jit(grad(acoustic_function_m, argnums=1))
-    
-
-    for i in range(opt_steps):
-        gradients_k = grad_acoustic_mk(R_temp, k_temp)
-        gradients_R = grad_acoustic_mR(R_temp, k_temp)
-        
-        #evaluate maximum gradients
-        gradient_max_k = np.max(np.abs(gradients_k))
-        gradient_max_R = np.max(np.abs(gradients_R))
-    
-        #check if gradients exceed a threshold
-        if np.maximum(gradient_max_k,gradient_max_R)>10:
-            print(i, gradient_max_k, gradient_max_R)
-            exit_flag = 1
-            break
-    
-        #check if k_temp has exceeded a threshold
-        if np.max(k_temp)>10:
-            print('max k_temp',np.max(k_temp))
-            exit_flag = 2
-            break
-    
-        
-        k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
-        R_temp = utils.update_R(gradients_R, R_temp,0.01)
-    
-        net_fitness = simulation.acoustic_auxetic_maintainer_wrapper(system, shift, displacement, k_fit,poisson_factor,poisson_init)(R_temp, k_temp)
-        poisson, log, R_init, R_final = simulation.simulate_auxetic(R_temp,
-                                                                k_temp,
-                                                                system,
-                                                                shift,
-                                                                displacement)
-        bandgap_contrast = net_fitness - poisson_factor*(poisson-poisson_init)**2
-
-        if bandgap_contrast < - 0.95*forbidden_states_init and np.abs(poisson-poisson_init) < 0.02: 
-            print('converged')
-            exit_flag = 3
-            break
-        
-        print(i, np.max(gradients_k),np.max(gradients_R), bandgap_contrast, poisson-poisson_init)
-
-    result = simulation.forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
-    np.savez(str(run), 
-             R_temp = R_temp, 
-             k_temp = k_temp, 
-             poisson = poisson, 
-             poisson_init = poisson_init,
-             bandgap_contrast = bandgap_contrast, 
-             forbidden_states_init = result.forbidden_states_init,
-             forbidden_states_final = result.forbidden_states_final,
-             exit_flag = exit_flag)
-    return poisson, bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement
-
-
-
-def generate_auxetic_acoustic_adaptive(run, size, poisson_target, perturbation, w_c, dw):
+def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, perturbation, w_c, dw, poisson_target, opt_steps):
 
     """
     run: run id, also used to as random seed
@@ -875,8 +764,7 @@ def generate_auxetic_acoustic_adaptive(run, size, poisson_target, perturbation, 
     ageing_rate=0.1
     success_frac=0.05
     k_fit = 2.0/(dw**2) 
-    poisson_factor=0.0 #important!
-    system = utils.System(size, 26+run, 2.0, 0.2, 1e-1)
+    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
@@ -888,7 +776,6 @@ def generate_auxetic_acoustic_adaptive(run, size, poisson_target, perturbation, 
     
     
     
-    opt_steps = 100
     R_temp = R
     k_temp = k_bond
     
@@ -925,7 +812,7 @@ def generate_auxetic_acoustic_adaptive(run, size, poisson_target, perturbation, 
     print('initial forbidden states: ', forbidden_states_init) 
     
     # acoustic functions
-    acoustic_function = acoustic_compression_wrapper(system, shift, displacement, k_fit, poisson_factor)
+    acoustic_function = acoustic_compression_wrapper(system, shift, displacement, k_fit)
     
     grad_acoustic_R = jit(grad(acoustic_function, argnums=0))
     grad_acoustic_k = jit(grad(acoustic_function, argnums=1))
@@ -933,6 +820,7 @@ def generate_auxetic_acoustic_adaptive(run, size, poisson_target, perturbation, 
     #auxetic_functions
     
     auxetic_function = simulate_auxetic_wrapper(R, k_bond, system,shift,displacement)
+    
     grad_auxetic_R = jit(grad(auxetic_function, argnums=0))
     grad_auxetic_k = jit(grad(auxetic_function, argnums=1))
     
@@ -1025,7 +913,7 @@ def generate_auxetic_acoustic_adaptive(run, size, poisson_target, perturbation, 
     return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result
 
 
-def generate_auxetic_acoustic_shift(run, poisson_target, perturbation, frequency_closed, width_closed, frequency_opened, width_opened):
+def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, perturbation, frequency_closed, width_closed, frequency_opened, width_opened, poisson_target, opt_steps):
 
     """
     run: run id, also used to as random seed
@@ -1035,17 +923,18 @@ def generate_auxetic_acoustic_shift(run, poisson_target, perturbation, frequency
     width_closed :  width of the bandgap being closed
     frequency_opened : frequency of bandgap center being opened upon compression
     width_opened : width of the bandgap being opened
+    opt_steps: max steps attempted for optimization
+    
     """
     #parameters
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
-    number_of_nodes_per_side = 10 #fix this before running
     nr_trials=500
     ageing_rate=0.1
     success_frac=0.05
     k_fit = 2.0/(width_opened**2) 
-    poisson_factor=0.0 #important!
+    
     system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
     system.initialize()
     system.acoustic_parameters(frequency_opened, width_opened, nr_trials, ageing_rate, success_frac)
@@ -1058,7 +947,6 @@ def generate_auxetic_acoustic_shift(run, poisson_target, perturbation, frequency
     
     
     
-    opt_steps = 100
     R_temp = R
     k_temp = k_bond
 
@@ -1098,7 +986,7 @@ def generate_auxetic_acoustic_shift(run, poisson_target, perturbation, frequency
     print(" Contrasts:   Closed,   Opened" )
     print('initial : ', utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed), utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)) 
     print('final   : ', utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed),  utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened))
-    
+    print("Step", "max grad", "bandgap_distance", "poisson_distance",  "closed_contrast_ratio" , "opened_contrast_ratio" , "poisson")
     # acoustic functions
     acoustic_function = acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed, width_closed, frequency_opened, width_opened)
     
