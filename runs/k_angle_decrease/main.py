@@ -19,15 +19,13 @@ import time
 
 # %%
 
-
-poisson_target = onp.float64(sys.argv[1])
 perturbation = 2.0
 num_of_runs = 10
 size = 10
 results=[]
 for run in range(num_of_runs):
     poisson, exit_flag, R_temp, k_temp, system, shift, displacement = simulation.generate_auxetic(run, perturbation, size)
-    results.append([run, poisson, poisson_target, exit_flag])
+    results.append([run, poisson, exit_flag])
 
 
 
