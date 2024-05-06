@@ -20,11 +20,15 @@ import time
 
 
 perturbation = onp.float64(sys.argv[1])
+number_of_nodes_per_side = 8
+w_c = 2.0
+dw = 0.2
+opt_steps = 200
 
 num_of_runs = 5 
 results=[]
 for run in range(num_of_runs):
-    bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement = simulation.generate_acoustic(run, perturbation)
+    bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement = simulation.generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw, opt_steps)
     results.append([run,bandgap_contrast, exit_flag])
 
 
