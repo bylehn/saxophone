@@ -127,7 +127,7 @@ def simulate_auxetic(R,
         angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
-        node_energy = energy.soft_sphere_pair(displacement, sigma=0.05, epsilon=2.0)(R, **kwargs)
+        node_energy = energy.soft_sphere_pair(displacement, sigma=0.3, epsilon=2.0)(R, **kwargs)
 
         return bond_energy + angle_energy + node_energy
 
@@ -555,6 +555,50 @@ def acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed
  
         return objective_function
     return acoustic_bandgap_shift
+
+def simulate_pattern_wrapper(system,
+                             shift,
+                             displacement,
+                             k_x,
+                             k_y
+                            ):
+    """
+    Simulates the compression process using a System instance to seek 
+
+    R: position matrix  
+    k_bond: spring constant matrix
+    system: System instance containing the state and properties of the system   
+    shift: shift parameter for the FIRE minimization
+    displacement: displacement function      
+    k_x: wavenumber in x
+    k_y: wavenumber in y
+
+    Returns:
+    poisson: poisson ratio
+
+    """             
+
+
+    def simulate_pattern(R,
+                         k_bond
+                         ):
+        """
+        wrapped function.
+    
+        R: position matrix  
+        k_bond: spring constant matrix
+             
+    
+        Returns:
+        poisson: poisson ratio
+    
+        """             
+        _, _, R_init, R_final= simulate_auxetic(R, k_bond, system, shift, displacement)
+
+        objective_function = - utils.sine_bias(R_final, k_x, k_y) + utils.sine_bias(R_init, k_x, k_y)
+    
+        return objective_function
+    return simulate_pattern
 
 
 #Generate Functional Network Functions for Parameter Sweeps

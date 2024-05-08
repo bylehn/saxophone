@@ -196,3 +196,39 @@ def quiver_plot(R_init, R_final, E, ms = 30):
 
     # Assuming finalize_plot is a function you've defined
     finalize_plot((1, 1))
+
+
+def quiver_plot_grad(R_init, gradients, E, ms = 30):
+    """
+    Creates a quiver plot of the displacements of the atoms.
+
+    R_init: initial positions
+    R_final: final positions
+    E: edge matrix
+    """
+    R_plt = np.array(R_init)  # Assuming R_final is already defined
+    
+    fig, ax = plt.subplots(figsize=(8, 8))
+    # Plotting atoms
+    plt.plot(R_plt[:, 0], R_plt[:, 1], 'o', markersize=ms, color = 'k')
+
+    # Plotting bonds
+    for bond in E:  # Assuming E is your list of bonds
+        point1 = R_plt[bond[0]]
+        point2 = R_plt[bond[1]]
+        ax.plot([point1[0], point2[0]], [point1[1], point2[1]], c='black')  # Bond color
+
+    # Calculate displacement vectors
+    displacements = gradients # Assuming R_initial is defined
+
+    # Create quiver plot for displacements
+    ax.quiver(R_init[:, 0], R_init[:, 1], displacements[:, 0], displacements[:, 1],
+            color='red', scale=1, scale_units='xy', angles='xy', linewidth = 1.0)  # Adjust color and scale as needed
+
+    # Setting plot limits
+    ax.set_xlim([-1, np.max(R_plt[:, 1])+2])
+    ax.set_ylim([-1, np.max(R_plt[:, 1])+2])
+    
+
+    
+    # Assuming finalize_plot is a function you've defined

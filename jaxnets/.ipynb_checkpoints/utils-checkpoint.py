@@ -343,5 +343,9 @@ def gap_objective(frequency, frequency_center, k_fit):
     
     return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
 
+
+def sine_bias(R, k_x, k_y):
+    return np.mean( np.sin( 2 * np.pi*R * np.array([k_x, k_y] ) ) )
+
 def normalize_gradients(gradients):
     return gradients / np.max(np.linalg.norm(gradients,axis=1))
