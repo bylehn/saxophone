@@ -559,7 +559,7 @@ def acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed
 
 #Generate Functional Network Functions for Parameter Sweeps
 
-def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw, opt_steps):
+def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, opt_steps):
     #run: kinda a random number
     
     #parameters
@@ -570,7 +570,7 @@ def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw, opt_
     ageing_rate=0.1
     success_frac=0.05
     k_fit = 2.0/(dw**2) 
-    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
+    system = utils.System(number_of_nodes_per_side, k_angle, 26+run, 2.0, 0.2)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
@@ -934,7 +934,7 @@ def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, pert
     success_frac=0.05
     k_fit = 2.0/(width_opened**2) 
     
-    system = utils.System(number_of_nodes_per_side, k_angle, 26+run, 2.0, 0.2, 1e-1)
+    system = utils.System(number_of_nodes_per_side, k_angle, 26+run, 2.0, 0.2)
     system.initialize()
     system.acoustic_parameters(frequency_opened, width_opened, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)

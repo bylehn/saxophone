@@ -37,7 +37,7 @@ def extract_data(path):
 ```
 
 ```{python}
-def plot_results(results, x_key, y_key, color_key=None, x_limits=(-1, 1), cmap='jet', vmin=0, vmax=1):
+def plot_results(results, x_key, y_key, color_key=None, x_limits=(-1, 1), y_limits=(-1, 1), cmap='jet', vmin=0, vmax=1):
     if not results:
         print("No data to plot.")
         return
@@ -55,6 +55,7 @@ def plot_results(results, x_key, y_key, color_key=None, x_limits=(-1, 1), cmap='
         # Plotting the data
         plt.scatter(x_data, y_data, c=color_data, marker='o', cmap=cmap, vmin=vmin, vmax=vmax)
         plt.xlim(x_limits)  # Setting x-axis limits
+        plt.ylim(y_limits)
         plt.xlabel(x_key)  # X-axis label
         plt.ylabel(y_key)  # Y-axis label
         colorbar = plt.colorbar()  # Colorbar
@@ -190,3 +191,17 @@ plt.show()
 In the end, k_angle does help control how much poisson ratio we are able to achieve, although it depends on other parameters as well. For example, putting $k_{angle} = 0.01$ when the perturbation is 2.0 makes most of the runs to fail prematurely and the poisson ratios achieved is not as low as $k_{angle} = 0.1$ in this case. But if I make the perturbation only 1.0, I achieve lower poisson ratios, but I also should run the $k_{angle} = 0.1$ case at perturbation 1.0. 
 
 :::
+
+
+```{python}
+# Set the folder_path to the 'runs/sweep_poisson' subdirectory from the current working directory
+folder_path = os.path.join(os.getcwd(), 'runs', 'sweep_poisson_k_01')
+results = extract_data(folder_path)
+
+```
+
+```{python}
+#| label: fig-poissonratios_k_01
+#| fig-cap: "Poisson ratio achieved vs target. Color bar represents bandgap difference."
+plot_results(results, 'poisson_target', 'poisson', 'bandgap_distance')
+```

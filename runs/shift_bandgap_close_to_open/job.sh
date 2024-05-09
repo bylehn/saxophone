@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Array of poisson ratios to test
-poisson=(-0.7 -0.4 0.4 0.7)
+poisson=(-0.5 -0.4 0.4 0.5)
 
 for ratio in "${poisson[@]}"; do
     # Replace negative sign with 'minus_' to avoid mkdir command error
