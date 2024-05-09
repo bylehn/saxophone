@@ -153,13 +153,13 @@ Figure&nbsp;1: Poisson ratio achieved vs target. Color bar represents bandgap di
 <div class="code-with-filename-file">
 <pre><strong>jaxnets/simulation.py</strong></pre>
 </div>
-<div class="sourceCode" id="cb1" data-filename="jaxnets/simulation.py" data-startfrom="271"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python" style="counter-reset: source-line 270;"><span id="cb1-271"><a href="#cb1-271"></a>    <span class="kw">def</span> energy_fn(R, system, <span class="op">**</span>kwargs):</span>
-<span id="cb1-272"><a href="#cb1-272"></a>        angle_energy <span class="op">=</span> np.<span class="bu">sum</span>(energies.angle_energy(system, system.angle_triplets, displacement, R))</span>
-<span id="cb1-273"><a href="#cb1-273"></a>        <span class="co"># Bond energy (assuming that simple_spring_bond is JAX-compatible)</span></span>
-<span id="cb1-274"><a href="#cb1-274"></a>        bond_energy <span class="op">=</span> energy.simple_spring_bond(displacement, system.E, length<span class="op">=</span>system.distances, epsilon<span class="op">=</span>k_bond[:, <span class="dv">0</span>])(R, <span class="op">**</span>kwargs)</span>
-<span id="cb1-275"><a href="#cb1-275"></a>        node_energy <span class="op">=</span> energy.soft_sphere_pair(displacement, sigma<span class="op">=</span><span class="fl">0.05</span>, epsilon<span class="op">=</span><span class="fl">2.0</span>)(R, <span class="op">**</span>kwargs)</span>
-<span id="cb1-276"><a href="#cb1-276"></a></span>
-<span id="cb1-277"><a href="#cb1-277"></a>        <span class="cf">return</span> bond_energy <span class="op">+</span> angle_energy <span class="op">+</span> node_energy</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb1" data-filename="jaxnets/simulation.py" data-startfrom="271"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python" style="counter-reset: source-line 270;"><span id="cb1-271"><a href="#cb1-271"></a>    k_old: old spring constant matrix</span>
+<span id="cb1-272"><a href="#cb1-272"></a>    X: position matrix</span>
+<span id="cb1-273"><a href="#cb1-273"></a>    C: compatibility matrix</span>
+<span id="cb1-274"><a href="#cb1-274"></a>    V: eigenvectors</span>
+<span id="cb1-275"><a href="#cb1-275"></a>    D: eigenvalues</span>
+<span id="cb1-276"><a href="#cb1-276"></a>    D_range: frequency <span class="bu">range</span></span>
+<span id="cb1-277"><a href="#cb1-277"></a>    ageing_rate: ageing rate</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>In line 275 I change the sigma.</p>
 </div>
@@ -196,24 +196,41 @@ These are comments from an older run
 <div class="code-with-filename-file">
 <pre><strong>jaxnets/simulation.py</strong></pre>
 </div>
-<div class="sourceCode" id="cb2" data-filename="jaxnets/simulation.py" data-startfrom="889"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python" style="counter-reset: source-line 888;"><span id="cb2-889"><a href="#cb2-889"></a><span class="kw">def</span> generate_auxetic(run, perturbation, size):</span>
-<span id="cb2-890"><a href="#cb2-890"></a>    steps <span class="op">=</span> <span class="dv">50</span></span>
-<span id="cb2-891"><a href="#cb2-891"></a>    write_every <span class="op">=</span> <span class="dv">1</span></span>
-<span id="cb2-892"><a href="#cb2-892"></a>    delta_perturbation <span class="op">=</span> <span class="fl">0.1</span></span>
-<span id="cb2-893"><a href="#cb2-893"></a>    nr_trials<span class="op">=</span><span class="dv">500</span></span>
-<span id="cb2-894"><a href="#cb2-894"></a>    dw<span class="op">=</span><span class="fl">0.2</span></span>
-<span id="cb2-895"><a href="#cb2-895"></a>    w_c<span class="op">=</span><span class="fl">2.0</span></span>
-<span id="cb2-896"><a href="#cb2-896"></a>    ageing_rate<span class="op">=</span><span class="fl">0.1</span></span>
-<span id="cb2-897"><a href="#cb2-897"></a>    success_frac<span class="op">=</span><span class="fl">0.05</span></span>
-<span id="cb2-898"><a href="#cb2-898"></a>    k_fit <span class="op">=</span> <span class="fl">2.0</span><span class="op">/</span>(dw<span class="op">**</span><span class="dv">2</span>) </span>
-<span id="cb2-899"><a href="#cb2-899"></a>    poisson_factor<span class="op">=</span><span class="dv">40</span></span>
-<span id="cb2-900"><a href="#cb2-900"></a>    system <span class="op">=</span> utils.System(size, <span class="dv">26</span><span class="op">+</span>run, <span class="fl">2.0</span>, <span class="fl">0.2</span>, <span class="fl">1e-1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb2" data-filename="jaxnets/simulation.py" data-startfrom="889"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python" style="counter-reset: source-line 888;"><span id="cb2-889"><a href="#cb2-889"></a>    </span>
+<span id="cb2-890"><a href="#cb2-890"></a>        </span>
+<span id="cb2-891"><a href="#cb2-891"></a>        <span class="cf">if</span> np.<span class="bu">abs</span>(poisson_distance) <span class="op">&lt;</span> <span class="fl">0.02</span> <span class="kw">and</span> bandgap_distance <span class="op">&lt;</span> <span class="fl">0.05</span>: </span>
+<span id="cb2-892"><a href="#cb2-892"></a>            <span class="bu">print</span>(<span class="st">'converged'</span>)</span>
+<span id="cb2-893"><a href="#cb2-893"></a>            exit_flag <span class="op">=</span> <span class="dv">3</span></span>
+<span id="cb2-894"><a href="#cb2-894"></a>            <span class="cf">break</span></span>
+<span id="cb2-895"><a href="#cb2-895"></a>    </span>
+<span id="cb2-896"><a href="#cb2-896"></a>        </span>
+<span id="cb2-897"><a href="#cb2-897"></a>        <span class="bu">print</span>(i, gradient_max, bandgap_distance, poisson_distance, forbidden_states_init, forbidden_states_final, poisson)</span>
+<span id="cb2-898"><a href="#cb2-898"></a></span>
+<span id="cb2-899"><a href="#cb2-899"></a>   </span>
+<span id="cb2-900"><a href="#cb2-900"></a>    np.savez(<span class="bu">str</span>(run), </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>so since each run is 0-9 they have a different random seed, but all the runs in different poisson ratio folders will be identical for the same number 0-9, so it makes sense. However, it is still useful in the sense that we’re still not getting very negative poisson ratios, max is around <span class="math inline">\(-0.4\)</span></p>
 </div>
 </div>
 </div>
 <p>Also as seen in <a href="#fig-sphere-poisson" class="quarto-xref">Figure&nbsp;2</a>, for the points labeled sigma_0.1, there is a shift towards more negative poisson ratios but still not very significant. Another challenge is that the variance for different runs is very large. Also for <span class="math inline">\(\sigma = 0.1\)</span>, not all the runs completed since it ran out of memory. How can the code be made less memory-intensive? Also, none of the runs are converging, they all have exit-flag 1, which is that gradients are exceeded. Is that because the sphere radius is too small?</p>
+</div>
+<div id="cell-fig-kangle" class="cell" data-execution_count="11">
+<div class="cell-output cell-output-display">
+<div id="fig-kangle" class="quarto-figure quarto-figure-center quarto-float anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-kangle-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="jaxnets_files/figure-html/fig-kangle-output-1.png" width="589" height="434" class="figure-img">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-kangle-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;3: Poisson ratio achieved vs target for different parameters
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="notes">
+<p>In the end, k_angle does help control how much poisson ratio we are able to achieve, although it depends on other parameters as well. For example, putting <span class="math inline">\(k_{angle} = 0.01\)</span> when the perturbation is 2.0 makes most of the runs to fail prematurely and the poisson ratios achieved is not as low as <span class="math inline">\(k_{angle} = 0.1\)</span> in this case. But if I make the perturbation only 1.0, I achieve lower poisson ratios, but I also should run the <span class="math inline">\(k_{angle} = 0.1\)</span> case at perturbation 1.0.</p>
 </div>
 </section>
 

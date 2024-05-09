@@ -12,7 +12,7 @@ from jax_md import quantity, space
 
 # %%
 class System:
-    def __init__(self, nr_points, random_seed, r_circle, dx, k_angle):
+    def __init__(self, nr_points, k_angle, random_seed, r_circle, dx):
         self.nr_points = nr_points
         self.random_seed = random_seed
         self.r_circle = r_circle
