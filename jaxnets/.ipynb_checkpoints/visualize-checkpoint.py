@@ -162,6 +162,59 @@ def makemovieDOS(system, k, traj,stride=10):
     plt.show()
     return ani
 
+def makemovie_nodes(system, k, traj, amp=1., xylims=9., stride = 10, ms = 10):
+
+    """
+    makes a plot with nodes only
+    """
+    sns.set_style(style='white')
+    k = np.squeeze(k)
+    
+    def init():
+        plt.axis('on')
+        return plt
+
+    def update(frame):
+        plt.clf()  # Clear the current figure
+        R_plt = traj['position'][frame]
+        R_0 = traj['position'][0]
+        R_plt = R_0 + amp * (R_plt - R_0)
+
+        pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
+
+        # Draw node numbers on the nodes
+        nx.draw_networkx_nodes(system.G, pos, node_size = ms, node_color = 'k')
+        
+        plt.plot(R_plt[:,0], np.zeros_like((R_plt[:, 0])), '.', color='red', ms = ms/2)
+        plt.plot( np.zeros_like((R_plt[:, 1])), R_plt[:, 1], '.', color='red', ms = ms/2)
+        plt.xlim([0, xylims])
+        plt.ylim([0, xylims])
+        plt.axis('on')
+        return plt
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ani = FuncAnimation(fig, update, frames=range(0, len(traj['position']), stride), init_func=init, blit=False)
+    ani.save('compressednodes.gif', writer='imagemagick')
+    display(HTML(ani.to_jshtml()))
+    plt.show()
+    return ani
+
+def plot_node_distribution(system, R_plt, xylims=9., ms = 10):
+    
+        pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
+
+        nx.draw_networkx_nodes(system.G, pos, node_size = ms, node_color = 'k')
+        
+        plt.plot(R_plt[:,0], np.zeros_like((R_plt[:, 0])), '.', color='red', ms = ms/2)
+        plt.plot( np.zeros_like((R_plt[:, 1])), R_plt[:, 1], '.', color='red', ms = ms/2)
+        plt.xlim([0, xylims])
+        plt.ylim([0, xylims])
+        plt.axis('on')
+        plt.show()
+
+        return
+
+
 def quiver_plot(R_init, R_final, E, ms = 30):
     """
     Creates a quiver plot of the displacements of the atoms.

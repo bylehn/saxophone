@@ -597,7 +597,7 @@ def simulate_pattern_wrapper(system,
 
         objective_function = - utils.sine_bias(R_final, k_x, k_y) + utils.sine_bias(R_init, k_x, k_y)
     
-        return objective_function
+        return np.sum(objective_function)
     return simulate_pattern
 
 
