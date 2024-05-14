@@ -1,6 +1,6 @@
 import jax.numpy as np
 from jax import vmap
-from jaxnets.utils import compute_angle_between_triplet
+from saxophone.utils import compute_angle_between_triplet
 from jax_md import quantity
 from jax import jit
 

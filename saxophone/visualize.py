@@ -5,7 +5,7 @@ from matplotlib.animation import FuncAnimation
 from IPython.display import HTML, display
 import jax.numpy as np
 import numpy as onp
-import jaxnets.simulation as simulation
+import saxophone.simulation as simulation
 import matplotlib as mpl
 
 mpl.rcParams.update({'font.size': 28})

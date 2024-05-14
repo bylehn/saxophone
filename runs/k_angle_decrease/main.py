@@ -4,7 +4,7 @@ import numpy as onp
 from jax.config import config; config.update("jax_enable_x64", True); config.update("jax_debug_nans", False)
 import sys
 sys.path.insert(0, '/scratch/midway3/bylehn/auxetic_networks_jaxmd/')  # Adds the parent directory to sys.path
-import jaxnets.simulation as simulation
+import saxophone.simulation as simulation
 
 # %%
 
