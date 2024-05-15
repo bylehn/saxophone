@@ -127,7 +127,7 @@ def simulate_auxetic(R,
         angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
-        node_energy = energy.soft_sphere_pair(displacement, sigma=0.05, epsilon=2.0)(R, **kwargs)
+        node_energy = energy.soft_sphere_pair(displacement, sigma=0.3, epsilon=2.0)(R, **kwargs)
 
         return bond_energy + angle_energy + node_energy
 
@@ -559,7 +559,7 @@ def acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed
 
 #Generate Functional Network Functions for Parameter Sweeps
 
-def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw, opt_steps):
+def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, opt_steps):
     #run: kinda a random number
     
     #parameters
@@ -570,7 +570,7 @@ def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw, opt_
     ageing_rate=0.1
     success_frac=0.05
     k_fit = 2.0/(dw**2) 
-    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
+    system = utils.System(number_of_nodes_per_side, k_angle, 26+run, 2.0, 0.2)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
@@ -647,7 +647,7 @@ def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw, opt_
     
         
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
-        R_temp = utils.update_R(gradients_R, R_temp,0.01)
+        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp,0.01)
     
         bandgap_contrast = acoustic_compression_wrapper(system, shift, displacement, k_fit)(R_temp, k_temp)
         
@@ -666,7 +666,7 @@ def generate_acoustic(run, number_of_nodes_per_side, perturbation, w_c, dw, opt_
              exit_flag = exit_flag)
     return bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement
 
-def generate_auxetic(run, number_of_nodes_per_side, perturbation, opt_steps):
+def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_steps):
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
@@ -675,8 +675,7 @@ def generate_auxetic(run, number_of_nodes_per_side, perturbation, opt_steps):
     w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
-    k_fit = 2.0/(dw**2) 
-    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
+    system = utils.System(number_of_nodes_per_side, k_angle, 26+run, 2.0, 0.2)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
@@ -732,7 +731,7 @@ def generate_auxetic(run, number_of_nodes_per_side, perturbation, opt_steps):
 
         #update k and R
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
-        R_temp = utils.update_R(gradients_R, R_temp,0.01)
+        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp,0.01)
 
         #evaluate new fitness for reporting
         poisson, log, R_init, R_final = simulate_auxetic(R_temp,
@@ -747,7 +746,7 @@ def generate_auxetic(run, number_of_nodes_per_side, perturbation, opt_steps):
 
 
 
-def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, perturbation, w_c, dw, poisson_target, opt_steps):
+def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, poisson_target, opt_steps):
 
     """
     run: run id, also used to as random seed
@@ -764,7 +763,7 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, perturbati
     ageing_rate=0.1
     success_frac=0.05
     k_fit = 2.0/(dw**2) 
-    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
+    system = utils.System(number_of_nodes_per_side, k_angle, 26+run, 2.0, 0.2)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
@@ -875,7 +874,7 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, perturbati
         
         
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
-        R_temp = utils.update_R(gradients_R, R_temp,0.01)
+        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp, 0.01)
     
         result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
     
@@ -913,7 +912,7 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, perturbati
     return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result
 
 
-def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, perturbation, frequency_closed, width_closed, frequency_opened, width_opened, poisson_target, opt_steps):
+def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, perturbation, frequency_closed, width_closed, frequency_opened, width_opened, poisson_target, opt_steps):
 
     """
     run: run id, also used to as random seed
@@ -935,7 +934,7 @@ def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, perturbation,
     success_frac=0.05
     k_fit = 2.0/(width_opened**2) 
     
-    system = utils.System(number_of_nodes_per_side, 26+run, 2.0, 0.2, 1e-1)
+    system = utils.System(number_of_nodes_per_side, k_angle, 26+run, 2.0, 0.2)
     system.initialize()
     system.acoustic_parameters(frequency_opened, width_opened, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
@@ -1051,7 +1050,7 @@ def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, perturbation,
         
         
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
-        R_temp = utils.update_R(gradients_R, R_temp,0.01)
+        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp,0.01)
     
         result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
     
