@@ -13,7 +13,7 @@ sys.path.insert(0, '/scratch/midway3/bylehn/auxetic_networks_jaxmd/')  # Adds th
 import saxophone.visualize as visualize
 import saxophone.utils as utils
 import saxophone.simulation as simulation
-
+import gc
 import time
 
 
@@ -32,7 +32,7 @@ results=[]
 for run in range(num_of_runs):
     poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result = simulation.generate_auxetic_acoustic_adaptive(run, size, k_angle, perturbation, w_c, dw, poisson_target, opt_steps)
     results.append([run, poisson_distance, bandgap_distance, exit_flag])
-
+    gc.collect()
 
 
 results=np.array(results)

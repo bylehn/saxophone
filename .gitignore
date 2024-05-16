@@ -11,4 +11,5 @@
 *.woff
 *.eot
 *.ttf
+/.ipynb_checkpoints/
 
