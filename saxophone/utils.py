@@ -26,6 +26,7 @@ class System:
         self.E = None
         self.L = None
         self.surface_nodes = None  
+        self.surface_mask = None
         self.mass = None
         self.spring_constants = None
         self.distances = None
@@ -94,15 +95,24 @@ class System:
         X = np.vstack((xm.flatten(), ym.flatten())).T
         N = X.shape[0]
 
+        # Determine surface nodes
+        surface_mask = onp.logical_or.reduce([
+            X[:, 1] == self.nr_points,
+            X[:, 1] == 1,
+            X[:, 0] == self.nr_points,
+            X[:, 0] == 1
+        ])
+    
         # Split the key for the next random operation
         key, subkey = random.split(key)
-
-        # Add noise to the points
+    
+        # Add noise to the non-surface points
         noise = self.dx * 2 * (0.5 - random.uniform(subkey, (N, 2)))
-        X = X + noise
-
+        
         # Convert to numpy array for Delaunay triangulation
-        X_np = onp.array(X)
+        X_np = onp.array(X, dtype = np.float64)
+
+        X_np[~surface_mask] += noise[~surface_mask]
 
         # Create the Delaunay triangulation
         DT = Delaunay(X_np)
@@ -133,6 +143,7 @@ class System:
         self.X = X_np
         self.E = E
         self.L = L
+        self.surface_mask = surface_mask
         self.get_surface_nodes()
         self.get_mass()
         
@@ -255,12 +266,14 @@ def update_kbonds(gradients, k_bond, learning_rate = 0.1):
     return k_bond_new
 
 @jit
-def update_R(gradients, R_current, max_disp):
+def update_R(surface_mask, gradients, R_current, max_disp):
     """
     Updates positions based on gradients.
     """
     gradients_normalized = gradients / np.max(np.linalg.norm(gradients,axis=1))
+    gradients_normalized *= np.transpose(np.tile(~surface_mask, (2,1)))
     R_updated = R_current - max_disp*gradients_normalized
+    
     return R_updated
 
 def remove_zero_rows(log_dict):

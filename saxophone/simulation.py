@@ -647,7 +647,7 @@ def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c,
     
         
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
-        R_temp = utils.update_R(gradients_R, R_temp,0.01)
+        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp,0.01)
     
         bandgap_contrast = acoustic_compression_wrapper(system, shift, displacement, k_fit)(R_temp, k_temp)
         
@@ -731,7 +731,7 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
 
         #update k and R
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
-        R_temp = utils.update_R(gradients_R, R_temp,0.01)
+        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp,0.01)
 
         #evaluate new fitness for reporting
         poisson, log, R_init, R_final = simulate_auxetic(R_temp,
@@ -874,7 +874,7 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
         
         
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
-        R_temp = utils.update_R(gradients_R, R_temp,0.01)
+        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp, 0.01)
     
         result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
     
@@ -1050,7 +1050,7 @@ def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, pert
         
         
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
-        R_temp = utils.update_R(gradients_R, R_temp,0.01)
+        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp,0.01)
     
         result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
     
