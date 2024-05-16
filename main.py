@@ -9,9 +9,9 @@ from jax import jit, vmap
 from jax import lax
 import networkx as nx
 import sys
-import jaxnets.visualize as visualize
-import jaxnets.utils as utils
-import jaxnets.simulation as simulation
+import saxophone.visualize as visualize
+import saxophone.utils as utils
+import saxophone.simulation as simulation
 
 import time
 

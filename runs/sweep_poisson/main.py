@@ -10,9 +10,9 @@ from jax import lax
 import networkx as nx
 import sys
 sys.path.insert(0, '/scratch/midway3/bylehn/auxetic_networks_jaxmd/')  # Adds the parent directory to sys.path
-import jaxnets.visualize as visualize
-import jaxnets.utils as utils
-import jaxnets.simulation as simulation
+import saxophone.visualize as visualize
+import saxophone.utils as utils
+import saxophone.simulation as simulation
 
 import time
 

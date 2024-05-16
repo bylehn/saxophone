@@ -37,7 +37,7 @@ def extract_data(path):
 ```
 
 ```{python}
-def plot_results(results, x_key, y_key, color_key=None, x_limits=(-1, 1), y_limits=(-1, 1), cmap='jet', vmin=0, vmax=1):
+def plot_results(results, x_key, y_key, color_key=None, x_limits=(-1, 1), y_limits=(0, 1), cmap='jet', vmin=0, vmax=1):
     if not results:
         print("No data to plot.")
         return
@@ -49,7 +49,7 @@ def plot_results(results, x_key, y_key, color_key=None, x_limits=(-1, 1), y_limi
         color_data = [data[color_key] for data in results if color_key in data]
 
         # Check if data lengths match
-        if len(x_data) != len(y_data) or len(y_data) != len(color_data):
+        if len(x_data) != len(y_data):
             raise ValueError("Data lengths do not match.")
 
         # Plotting the data
@@ -203,5 +203,47 @@ results = extract_data(folder_path)
 ```{python}
 #| label: fig-poissonratios_k_01
 #| fig-cap: "Poisson ratio achieved vs target. Color bar represents bandgap difference."
-plot_results(results, 'poisson_target', 'poisson', 'bandgap_distance')
+plot_results(results, 'poisson_target',  'bandgap_distance', 'poisson_target')
+```
+
+
+```{python}
+# Set the folder_path to the 'runs/sweep_poisson' subdirectory from the current working directory
+folder_path = os.path.join(os.getcwd(), 'runs', 'large_network')
+results = extract_data(folder_path)
+
+```
+
+```{python}
+# Set the folder_path to the 'runs/sweep_poisson' subdirectory from the current working directory
+folder_path = os.path.join(os.getcwd(), 'runs', 'large_network', 'acoustic')
+results_acoustics = extract_data(folder_path)
+
+```
+
+
+```{python}
+# Set the folder_path to the 'runs/sweep_poisson' subdirectory from the current working directory
+folder_path = os.path.join(os.getcwd(), 'runs', 'shift_bandgap_open_to_close')
+results = extract_data(folder_path)
+
+```
+
+```{python}
+#| label: fig-poissonratios_k_01
+#| fig-cap: "Poisson ratio achieved vs target. Color bar represents bandgap difference."
+plot_results(results, 'poisson',  'bandgap_distance', 'poisson_target')
+```
+
+```{python}
+# Set the folder_path to the 'runs/sweep_poisson' subdirectory from the current working directory
+folder_path = os.path.join(os.getcwd(), 'runs', 'shift_bandgap_close_to_open')
+results = extract_data(folder_path)
+
+```
+
+```{python}
+#| label: fig-poissonratios_k_01
+#| fig-cap: "Poisson ratio achieved vs target. Color bar represents bandgap difference."
+plot_results(results, 'poisson',  'bandgap_distance', 'poisson_target')
 ```
