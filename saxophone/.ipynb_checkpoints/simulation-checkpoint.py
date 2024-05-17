@@ -6,8 +6,8 @@ from jax import jit, vmap, grad
 from jax import lax
 from jax import debug
 import networkx as nx
-import jaxnets.utils as utils
-import jaxnets.energies as energies
+import saxophone.utils as utils
+import saxophone.energies as energies
 from collections import namedtuple
 
 Result_forbidden_modes = namedtuple('Result', [

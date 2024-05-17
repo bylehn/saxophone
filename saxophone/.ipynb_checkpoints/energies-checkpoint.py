@@ -1,6 +1,6 @@
 import jax.numpy as np
 from jax import vmap
-from jaxnets.utils import compute_angle_between_triplet
+from saxophone.utils import compute_angle_between_triplet
 from jax_md import quantity
 from jax import jit
 
@@ -48,7 +48,12 @@ def angle_energy(system, triplets, displacement_fn, positions):
         return compute_angle_between_triplet(displacement_fn, pi, pj, pk)
     
     angles = vmap(angle)(triplets)
-    return 0.5 * system.k_angle * (angles - system.initial_angles)**2
+
+    crossing_penalty_strength = 10.0 # L of logistic curve
+    crossing_penalty_steepness = 200.0 #k of logistic curve 
+    crossing_penalty_threshold = 0.1 #radians
+    crossing_penalty = crossing_penalty_strength * np.exp( - crossing_penalty_steepness*( angles - crossing_penalty_threshold ) )
+    return 0.5 * system.k_angle * (angles - system.initial_angles)**2 + crossing_penalty
 
 # Assume angle_triplets is an array of shape (num_angles, 3)
 # Each row in angle_triplets represents a set of indices (i, j, k)
