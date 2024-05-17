@@ -377,3 +377,5 @@ def gap_objective(frequency, frequency_center, k_fit):
 
 def normalize_gradients(gradients):
     return gradients / np.max(np.linalg.norm(gradients,axis=1))
+
+

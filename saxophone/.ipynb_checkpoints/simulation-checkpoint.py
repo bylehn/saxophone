@@ -190,9 +190,9 @@ def simulate_auxetic_wrapper(R,
         poisson: poisson ratio
     
         """             
-        poisson, _, _, _ = simulate_auxetic(R, k_bond, system, shift, displacement)
-    
-        return poisson
+        poisson, log, R_init , R_final = simulate_auxetic(R, k_bond, system, shift, displacement)
+        output = poisson +  energies.test_energy_fn(R_init, k_bond, system) + energies.test_energy_fn(R_final, k_bond, system)#+ #np.sum(np.linalg.norm(log ['force'], axis =2)) 
+        return output
     return simulate_auxetic_optimize
 
 def get_bond_importance(C, V, D, D_range):
