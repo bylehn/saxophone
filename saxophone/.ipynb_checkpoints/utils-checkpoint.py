@@ -19,6 +19,10 @@ class System:
         self.dx = dx
         self.k_angle = k_angle
 
+        #energy attrbutes 
+        self.soft_sphere_sigma = 0.3
+        self.soft_sphere_epsilon = 2.0
+        
         # Initialize attributes
         self.N = None
         self.G = None
@@ -27,6 +31,7 @@ class System:
         self.L = None
         self.surface_nodes = None  
         self.surface_mask = None
+        self.surface_bond_mask = None
         self.mass = None
         self.spring_constants = None
         self.distances = None
@@ -145,6 +150,7 @@ class System:
         self.L = L
         self.surface_mask = surface_mask
         self.get_surface_nodes()
+        self.extract_surface_bond_mask()
         self.get_mass()
         
     def get_surface_nodes(self):
@@ -172,6 +178,23 @@ class System:
             'left': left_nodes,
             'right': right_nodes
         }
+    def extract_surface_bond_mask(self):
+        """
+        Extract a mask indicating all the bonds (edges) between the surface nodes.
+        """
+        # Ensure surface nodes are calculated
+        if not hasattr(self, 'surface_nodes'):
+            self.get_surface_nodes()
+    
+        # Combine all surface nodes into a single set
+        surface_nodes_set = set()
+        for key in self.surface_nodes:
+            surface_nodes_set.update(self.surface_nodes[key])
+    
+        # Create a boolean mask for edges between surface nodes
+        self.surface_bond_mask = np.array([edge[0] in surface_nodes_set and edge[1] in surface_nodes_set for edge in self.E])
+    
+        
 
     def get_mass(self):
         """
@@ -358,3 +381,5 @@ def gap_objective(frequency, frequency_center, k_fit):
 
 def normalize_gradients(gradients):
     return gradients / np.max(np.linalg.norm(gradients,axis=1))
+
+

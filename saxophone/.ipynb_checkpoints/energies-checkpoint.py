@@ -1,8 +1,9 @@
 import jax.numpy as np
 from jax import vmap
-from jaxnets.utils import compute_angle_between_triplet
+from saxophone.utils import compute_angle_between_triplet
 from jax_md import quantity
 from jax import jit
+from jax_md import energy
 
 def constrained_force_fn(R, energy_fn, mask):
     """
@@ -48,7 +49,12 @@ def angle_energy(system, triplets, displacement_fn, positions):
         return compute_angle_between_triplet(displacement_fn, pi, pj, pk)
     
     angles = vmap(angle)(triplets)
-    return 0.5 * system.k_angle * (angles - system.initial_angles)**2
+
+    crossing_penalty_strength = 1.0 # L of logistic curve
+    crossing_penalty_steepness = 50.0 #k of logistic curve 
+    crossing_penalty_threshold = 0.2 #radians
+    crossing_penalty = crossing_penalty_strength / (1 + np.exp( crossing_penalty_steepness*( angles - crossing_penalty_threshold ) ) )
+    return 0.5 * system.k_angle * (angles - system.initial_angles)**2 + crossing_penalty
 
 # Assume angle_triplets is an array of shape (num_angles, 3)
 # Each row in angle_triplets represents a set of indices (i, j, k)
@@ -60,3 +66,12 @@ def angle_energy(system, triplets, displacement_fn, positions):
 #current_positions = ... # Update this during your simulation
 #theta_0 = calculate_initial_angles(initial_positions, displacement_fn, E)
 #total_angle_energy = np.sum(vectorized_angle_energy(displacement_fn, k, theta_0, angle_triplets_data, current_positions))
+
+def test_energy_fn(R, k_bond, system, **kwargs):
+        displacement = system.displacement
+        angular_energy = np.sum(angle_energy(system, system.angle_triplets, displacement, R))
+        # Bond energy (assuming that simple_spring_bond is JAX-compatible)
+        bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
+        node_energy = energy.soft_sphere_pair(displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
+
+        return bond_energy + angular_energy + node_energy
