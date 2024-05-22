@@ -19,6 +19,10 @@ class System:
         self.dx = dx
         self.k_angle = k_angle
 
+        #energy attrbutes 
+        self.soft_sphere_sigma = 0.3
+        self.soft_sphere_epsilon = 2.0
+        
         # Initialize attributes
         self.N = None
         self.G = None
@@ -378,10 +382,4 @@ def gap_objective(frequency, frequency_center, k_fit):
 def normalize_gradients(gradients):
     return gradients / np.max(np.linalg.norm(gradients,axis=1))
 
-def test_energy_fn(R, system, **kwargs):
-        angle_energy = np.sum(angle_energy(system, system.angle_triplets, displacement, R))
-        # Bond energy (assuming that simple_spring_bond is JAX-compatible)
-        bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
-        node_energy = energy.soft_sphere_pair(displacement, sigma=0.3, epsilon=2.0)(R, **kwargs)
 
-        return bond_energy + angle_energy + node_energy

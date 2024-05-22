@@ -80,6 +80,11 @@ def makemovie_bondwidth(system, k, traj, amp=1., xylims=9., stride=10):
 
         pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
         nx.draw_networkx_edges(system.G, pos, width=2*k, alpha=0.6,edge_color='k')
+        # Draw nodes as circles with a radius of 0.3 in data units
+
+
+        nx.draw_networkx_nodes(system.G, pos, node_size=radius_in_points**2, node_color='k', edgecolors=None, alpha=0.25)
+            
         plt.xlim([0, xylims])
         plt.ylim([0, xylims])
 
@@ -88,6 +93,11 @@ def makemovie_bondwidth(system, k, traj, amp=1., xylims=9., stride=10):
 
     # Create the animation
     fig, ax = plt.subplots(figsize=(10, 10))
+    radius_in_data_units = system.soft_sphere_sigma/(xylims)
+    data_to_points = ax.transData.transform([(0, 0), (radius_in_data_units, 0)])
+    radius_in_points = (data_to_points[1][0] - data_to_points[0][0]) * 2  # Diameter in points
+    print(radius_in_data_units, radius_in_points, data_to_points)
+    
     ani = FuncAnimation(fig, update, frames=range(0, len(traj['position']), stride), init_func=init, blit=False)
     ani.save('compressedexample.gif', writer='imagemagick')
     # Display the animation

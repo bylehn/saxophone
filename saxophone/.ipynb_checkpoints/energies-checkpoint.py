@@ -50,9 +50,9 @@ def angle_energy(system, triplets, displacement_fn, positions):
     
     angles = vmap(angle)(triplets)
 
-    crossing_penalty_strength = 10.0 # L of logistic curve
-    crossing_penalty_steepness = 200.0 #k of logistic curve 
-    crossing_penalty_threshold = 0.1 #radians
+    crossing_penalty_strength = 1.0 # L of logistic curve
+    crossing_penalty_steepness = 50.0 #k of logistic curve 
+    crossing_penalty_threshold = 0.2 #radians
     crossing_penalty = crossing_penalty_strength / (1 + np.exp( crossing_penalty_steepness*( angles - crossing_penalty_threshold ) ) )
     return 0.5 * system.k_angle * (angles - system.initial_angles)**2 + crossing_penalty
 
@@ -72,6 +72,6 @@ def test_energy_fn(R, k_bond, system, **kwargs):
         angular_energy = np.sum(angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
-        node_energy = energy.soft_sphere_pair(displacement, sigma=0.3, epsilon=2.0)(R, **kwargs)
+        node_energy = energy.soft_sphere_pair(displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
 
         return bond_energy + angular_energy + node_energy

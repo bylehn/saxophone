@@ -19,6 +19,10 @@ class System:
         self.dx = dx
         self.k_angle = k_angle
 
+        #energy attrbutes 
+        self.soft_sphere_sigma = 0.3
+        self.soft_sphere_epsilon = 2.0
+        
         # Initialize attributes
         self.N = None
         self.G = None
