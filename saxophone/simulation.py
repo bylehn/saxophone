@@ -129,7 +129,7 @@ def simulate_auxetic(R,
         angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
-        node_energy = energy.soft_sphere_pair(displacement, sigma=0.3, epsilon=2.0)(R, **kwargs)
+        node_energy = energy.soft_sphere_pair(displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
 
         return bond_energy + angle_energy + node_energy
 
@@ -193,9 +193,9 @@ def simulate_auxetic_wrapper(R,
         poisson: poisson ratio
     
         """             
-        poisson, _, _, _ = simulate_auxetic(R, k_bond, system, shift, displacement)
-    
-        return poisson
+        poisson, log, R_init , R_final = simulate_auxetic(R, k_bond, system, shift, displacement)
+        output = poisson #+  energies.test_energy_fn(R_init, k_bond, system) # penalty 
+        return output
     return simulate_auxetic_optimize
 
 def get_bond_importance(C, V, D, D_range):
