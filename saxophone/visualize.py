@@ -23,47 +23,23 @@ def finalize_plot(shape=(1, 1)):
 
 
 
-def makemovie(N, G, traj, amp, xylims, stride=10):
 
-    # Set style
-    sns.set_style(style='white')
-
-    # Define the init function, which sets up the plot
-    def init():
-
-        plt.axis('on')
-        return plt
-
-    # Define the update function, which is called for each frame
-    def update(frame):
-
-        plt.clf()  # Clear the current figure
-        R_plt = traj['position'][frame]
-        R_0 = traj['position'][0]
-        R_plt = R_0 + amp * (R_plt - R_0)
-
-        pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(N)}
-        nx.draw(G, pos=pos, with_labels=False, node_size=2, font_size=8, font_color='black', font_weight='bold')
-        plt.xlim([0, xylims])
-        plt.ylim([0, xylims])
-
-        plt.axis('on')
-        return plt
-
-    # Create the animation
-    fig, ax = plt.subplots(figsize=(10, 10))
-    ani = FuncAnimation(fig, update, frames=range(0, len(traj['position']), stride), init_func=init, blit=False)
-    #ani.save('example.gif', writer='imagemagick')
-    # Display the animation
-    display(HTML(ani.to_jshtml()))
-    plt.show()
-    return ani
-
-def makemovie_bondwidth(system, k, traj, amp=1., xylims=9., stride=10):
-
+def makemovie(system, k, traj, amp=1., xylims=9., stride=10):
+    """
+    a cleaned up version of makemovie that plots nodes as well to the size of the soft sphere diameter
+    """
     # Set style
     sns.set_style(style='white')
     k = np.squeeze(k)
+
+    # Create the animation
+    fig_length = 5 #inches
+    dots_per_inch = 100
+    fig, ax = plt.subplots(figsize=(fig_length, fig_length), dpi = dots_per_inch)
+
+    #ax.set_aspect('equal', adjustable='box')
+
+
     # Define the init function, which sets up the plot
     def init():
 
@@ -78,25 +54,24 @@ def makemovie_bondwidth(system, k, traj, amp=1., xylims=9., stride=10):
         R_0 = traj['position'][0]
         R_plt = R_0 + amp * (R_plt - R_0)
 
+        
+
         pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
-        nx.draw_networkx_edges(system.G, pos, width=2*k, alpha=0.6,edge_color='k')
-        # Draw nodes as circles with a radius of 0.3 in data units
+        
+        nx.draw_networkx_edges(system.G, pos, width=2*k*system.distances, alpha=0.6,edge_color='k')
 
+        diameter_in_data_units = system.soft_sphere_sigma
+        size_in_points = (2*np.exp(1)* diameter_in_data_units * fig_length*10/xylims)**2 # arbitrary factor of 5.43 = 2e (Cesar's contrib); remove the 10/xylims factor when doing it outside of this function ¯\_(ツ)_/¯
 
-        nx.draw_networkx_nodes(system.G, pos, node_size=radius_in_points**2, node_color='k', edgecolors=None, alpha=0.25)
-            
+        nx.draw_networkx_nodes(system.G, pos, node_size=size_in_points, node_color='k', linewidths = 0.0, alpha=0.25)
+
         plt.xlim([0, xylims])
         plt.ylim([0, xylims])
+        plt.gca().set_aspect('equal')
 
-        plt.axis('on')
         return plt
 
-    # Create the animation
-    fig, ax = plt.subplots(figsize=(10, 10))
-    radius_in_data_units = system.soft_sphere_sigma/(xylims)
-    data_to_points = ax.transData.transform([(0, 0), (radius_in_data_units, 0)])
-    radius_in_points = (data_to_points[1][0] - data_to_points[0][0]) * 2  # Diameter in points
-    print(radius_in_data_units, radius_in_points, data_to_points)
+
     
     ani = FuncAnimation(fig, update, frames=range(0, len(traj['position']), stride), init_func=init, blit=False)
     ani.save('compressedexample.gif', writer='imagemagick')
@@ -206,3 +181,33 @@ def quiver_plot(R_init, R_final, E, ms = 30):
 
     # Assuming finalize_plot is a function you've defined
     finalize_plot((1, 1))
+
+
+
+def show_network(system, R_plt, k, xylims):
+    """
+    visualizes a given network statically. 
+    """
+    sns.set_style(style='white')
+    k = np.squeeze(k)
+
+    # Create the animation
+    fig_length = 5 #inches
+    dots_per_inch = 100
+    fig, ax = plt.subplots(figsize=(fig_length, fig_length), dpi = dots_per_inch)
+
+    
+
+    pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
+    
+    nx.draw_networkx_edges(system.G, pos, width=2*k*system.distances, alpha=0.6,edge_color='k')
+
+    diameter_in_data_units = system.soft_sphere_sigma
+    size_in_points = (2*np.exp(1)* diameter_in_data_units * fig_length*10/xylims)**2 # arbitrary factor of 5.43 = 2e (Cesar's contrib); remove the 10/xylims factor when doing it outside of this function
+
+    nx.draw_networkx_nodes(system.G, pos, node_size=size_in_points, node_color='k', linewidths = 0.0, alpha=0.25)
+
+    plt.xlim([0, xylims])
+    plt.ylim([0, xylims])
+    plt.gca().set_aspect('equal')
+    return

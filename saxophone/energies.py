@@ -50,10 +50,8 @@ def angle_energy(system, triplets, displacement_fn, positions):
     
     angles = vmap(angle)(triplets)
 
-    crossing_penalty_strength = 1.0 # L of logistic curve
-    crossing_penalty_steepness = 50.0 #k of logistic curve 
-    crossing_penalty_threshold = 0.2 #radians
-    crossing_penalty = crossing_penalty_strength / (1 + np.exp( crossing_penalty_steepness*( angles - crossing_penalty_threshold ) ) )
+
+    crossing_penalty = system.crossing_penalty_strength / (1 + np.exp( system.crossing_penalty_steepness*( angles - system.crossing_penalty_threshold ) ) )
     return 0.5 * system.k_angle * (angles - system.initial_angles)**2 + crossing_penalty
 
 # Assume angle_triplets is an array of shape (num_angles, 3)
