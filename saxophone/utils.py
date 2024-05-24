@@ -19,9 +19,14 @@ class System:
         self.dx = dx
         self.k_angle = k_angle
 
-        #energy attrbutes 
+        #node energy attrbutes 
         self.soft_sphere_sigma = 0.3
         self.soft_sphere_epsilon = 2.0
+
+        #crossing penalty attributes
+        self.crossing_penalty_strength = 0.1 # L of logistic curve
+        self.crossing_penalty_steepness = 50.0 #k of logistic curve 
+        self.crossing_penalty_threshold = 0.1 #radians
         
         # Initialize attributes
         self.N = None

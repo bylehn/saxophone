@@ -157,7 +157,7 @@ def simulate_auxetic(R,
 
     return poisson, log, R_init, R_final
 
-@profile
+#@profile
 def simulate_auxetic_wrapper(R,
                      k_bond,
                      system,
@@ -371,7 +371,7 @@ def scale_bond_importance(bond_importance):
     bi_centered = bond_importance - np.mean(bond_importance)
     return bi_centered/np.max(np.abs(bi_centered))
 
-@profile
+#@profile
 def forbidden_states_compression(R,
                                  k_bond,
                                  system,
@@ -468,7 +468,7 @@ def optimize_ageing_compression(R, system, k_bond, shift, displacement):
 
     return final_k_bond, final_trial, forbidden_states_init, forbidden_states_final
 
-@profile
+#@profile
 def acoustic_compression_wrapper(system, shift, displacement, k_fit):
     def acoustic_compression_grad(R, k_bond):
         """
