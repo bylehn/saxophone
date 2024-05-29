@@ -1,6 +1,7 @@
 import jax.numpy as np
 import numpy as onp
-from jax.config import config; config.update("jax_enable_x64", True)
+import jax
+jax.config.update("jax_enable_x64", True); jax.config.update("jax_debug_nans", False)
 from jax_md import energy, minimize
 from jax import jit, vmap, grad
 from jax import lax
@@ -110,7 +111,7 @@ def simulate_auxetic(R,
         force_fn = energies.constrained_force_fn(R_perturbed, energy_fn_wrapper, mask)
 
         # Reinitialize the fire state with the new positions and updated force function
-        fire_init, fire_apply = minimize.fire_descent(force_fn, shift)
+        fire_init, fire_apply = minimize.fire_descent(force_fn, shift, dt_max=0.2)
         fire_state = fire_init(R_perturbed)
 
         # Update step function generator with the new start index
@@ -744,7 +745,7 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
                                                                 shift,
                                                                 displacement)
         print(i, gradient_max_k, gradient_max_R,  poisson)
-    onp.savez(str(run), R_temp = R_temp, k_temp = k_temp, perturbation = perturbation, connectivity = system.E,
+    onp.savez(f'./networks/{str(run)}', R_temp = R_temp, k_temp = k_temp, perturbation = perturbation, connectivity = system.E,
              surface_nodes = system.surface_nodes, poisson = poisson, exit_flag = exit_flag)
     return poisson, exit_flag, R_temp, k_temp, system, shift, displacement
 

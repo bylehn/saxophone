@@ -6,7 +6,8 @@ from scipy.spatial import Delaunay
 from jax import vmap
 from jax import jit
 from jax import random  
-from jax.config import config; config.update("jax_enable_x64", True)
+import jax
+jax.config.update("jax_enable_x64", True); jax.config.update("jax_debug_nans", False)
 from jax_md import quantity, space
 
 
