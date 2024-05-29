@@ -147,35 +147,48 @@ def makemovieDOS(system, k, traj,stride=10):
     plt.show()
     return ani
 
-def quiver_plot(R_init, R_final, E, ms = 30):
+def quiver_plot(R_init, R_final, k, system, xylims=9., shaft_width = 0.001):
     """
     Creates a quiver plot of the displacements of the atoms.
 
     R_init: initial positions
     R_final: final positions
-    E: edge matrix
+    
     """
+    sns.set_style(style='white')
+
+    fig_length = 5 #inches
+    dots_per_inch = 100
+    fig, ax = plt.subplots(figsize=(fig_length, fig_length), dpi = dots_per_inch)
     R_plt = np.array(R_final)  # Assuming R_final is already defined
-
+    k = np.squeeze(k)
     # Plotting atoms
-    plt.plot(R_plt[:, 0], R_plt[:, 1], 'o', markersize=ms * 0.5)
 
-    # Plotting bonds
-    for bond in E:  # Assuming E is your list of bonds
-        point1 = R_plt[bond[0]]
-        point2 = R_plt[bond[1]]
-        plt.plot([point1[0], point2[0]], [point1[1], point2[1]], c='black')  # Bond color
+
+    
+
+    pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
+    
+    nx.draw_networkx_edges(system.G, pos, width=2*k*system.distances, alpha=0.6,edge_color='k')
+
+    diameter_in_data_units = system.soft_sphere_sigma
+    size_in_points = (2*np.exp(1)* diameter_in_data_units * fig_length)**2 # arbitrary factor of 5.43 = 2e (Cesar's contrib); remove the 10/xylims factor when doing it outside of this function
+
+    nx.draw_networkx_nodes(system.G, pos, node_size=size_in_points, node_color='k', linewidths = 0.0, alpha=0.25)
+
 
     # Calculate displacement vectors
     displacements = R_final - R_init # Assuming R_initial is defined
 
     # Create quiver plot for displacements
     plt.quiver(R_init[:, 0], R_init[:, 1], displacements[:, 0], displacements[:, 1],
-            color='red', scale=1, scale_units='xy', angles='xy')  # Adjust color and scale as needed
+            color='red', scale=1, scale_units='xy', angles='xy', width = shaft_width)  # Adjust color and scale as needed
 
     # Setting plot limits
-    plt.xlim([0, np.max(R_plt[:, 0])])
-    plt.ylim([0, np.max(R_plt[:, 1])])
+    plt.xlim([0, xylims])
+    plt.ylim([0, xylims])
+    plt.gca().set_aspect('equal')
+
 
     plt.axis('on')
 

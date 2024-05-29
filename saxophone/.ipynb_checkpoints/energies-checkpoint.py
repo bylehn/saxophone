@@ -52,7 +52,7 @@ def angle_energy(system, triplets, displacement_fn, positions):
 
 
     crossing_penalty = system.crossing_penalty_strength / (1 + np.exp( system.crossing_penalty_steepness*( angles - system.crossing_penalty_threshold ) ) )
-    return 0.5 * system.k_angle * (angles - system.initial_angles)**2 + crossing_penalty
+    return 0.5 * system.k_angles * ((angles - system.initial_angles)**2) + crossing_penalty
 
 # Assume angle_triplets is an array of shape (num_angles, 3)
 # Each row in angle_triplets represents a set of indices (i, j, k)

@@ -26,7 +26,7 @@ class System:
         #crossing penalty attributes
         self.crossing_penalty_strength = 0.1 # L of logistic curve
         self.crossing_penalty_steepness = 50.0 #k of logistic curve 
-        self.crossing_penalty_threshold = 0.1 #radians
+        self.crossing_penalty_threshold = 0.3 #radians
         
         # Initialize attributes
         self.N = None
@@ -51,6 +51,7 @@ class System:
         self.ageing_rate = 0.01
         self.success_fraction = 0.05
         self.nr_trials = None
+        self.degrees = None
         # Auxetic properties
         self.perturbation = 1.
         self.delta_perturbation = 0.1
@@ -75,6 +76,7 @@ class System:
         self.create_spring_constants()
         self.calculate_angle_triplets_method()
         self.calculate_initial_angles_method(displacement)
+        self.k_angles = (2*self.k_angle/ ( self.degrees* (self.degrees-1) ) ) [self.angle_triplets[:,1]]  #equal distribution of angle stiffness to all triplets centred on a node 
         self.get_surface_nodes()
         
     def auxetic_parameters(self, perturbation=1., delta_perturbation=0.1, steps=50, write_every=1):
@@ -157,6 +159,7 @@ class System:
         self.get_surface_nodes()
         self.extract_surface_bond_mask()
         self.get_mass()
+        self.degrees  = np.array([val for (node, val) in G.degree()])
         
     def get_surface_nodes(self):
         """
@@ -317,6 +320,8 @@ def remove_zero_rows(log_dict):
 def calculate_angle_triplets(E):
     """
     Calculates the triplets of nodes that form angles.
+
+    Note: this considers ALL angles at a node, not just the planar subset. This is consistent with NOMM paper.
 
     E: edge matrix
 
