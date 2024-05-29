@@ -110,7 +110,7 @@ def simulate_auxetic(R,
         force_fn = energies.constrained_force_fn(R_perturbed, energy_fn_wrapper, mask)
 
         # Reinitialize the fire state with the new positions and updated force function
-        fire_init, fire_apply = minimize.fire_descent(force_fn, shift)
+        fire_init, fire_apply = minimize.fire_descent(force_fn, shift, dt_max = 0.2)
         fire_state = fire_init(R_perturbed)
 
         # Update step function generator with the new start index
