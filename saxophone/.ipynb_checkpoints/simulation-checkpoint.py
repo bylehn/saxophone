@@ -194,7 +194,7 @@ def simulate_auxetic_wrapper(R,
     
         """             
         poisson, log, R_init , R_final = simulate_auxetic(R, k_bond, system, shift, displacement)
-        output = poisson #+  energies.test_energy_fn(R_init, k_bond, system) # penalty 
+        output = poisson + energies.penalty_energy(R_init, k_bond, system) / system.penalty_scale # penalty 
         return output
     return simulate_auxetic_optimize
 
@@ -487,7 +487,7 @@ def acoustic_compression_wrapper(system, shift, displacement, k_fit):
         fit_final = gap_objective(result.frequency_final, system.frequency_center, k_fit)
 
         # Weighted objective function: Heavily weight the final state's energy
-        objective_function = fit_final -fit_init
+        objective_function = fit_final - fit_init
         
         #return result.forbidden_states_init, result.forbidden_states_final
         return objective_function
@@ -574,7 +574,7 @@ def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c,
     ageing_rate=0.1
     success_frac=0.05
     k_fit = 2.0/(dw**2) 
-    system = utils.System(number_of_nodes_per_side, k_angle, 26+run, 2.0, 0.2)
+    system = utils.System(number_of_nodes_per_side, k_angle, 26+run, 2.0, 0.66)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
@@ -679,7 +679,7 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
     w_c=2.0
     ageing_rate=0.1
     success_frac=0.05
-    system = utils.System(number_of_nodes_per_side, k_angle, 26+run, 2.0, 0.2)
+    system = utils.System(number_of_nodes_per_side, k_angle, 26+run, 2.0, 0.35)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
@@ -702,32 +702,30 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
     2: max k_temp exceeded
     
     """
-    prev_gradient_max_k = 0
-    prev_gradient_max_R = 0
-
+    prev_gradient_max = 0
+    R_evolution = np.zeros((opt_steps, system.N, 2))
+    R_evolution = R_evolution.at[0].set(R)
     for i in range(opt_steps):
 
         #evaluate gradients for bond stiffness and positions
         gradients_R = grad_auxetic(R_temp, k_temp)
         gradients_k = grad_auxetic_k(R_temp, k_temp)
 
-        #evaluate maximum gradients
-        gradient_max_k = np.max(np.abs(gradients_k))
-        gradient_max_R = np.max(np.abs(gradients_R))
-
-        #calculate difference in maximum gradients
-        diff_gradient_max_k = gradient_max_k - prev_gradient_max_k
-        diff_gradient_max_R = gradient_max_R - prev_gradient_max_R
+        gradient_max = np.max( np.abs( np.vstack((gradients_k, 
+                                                  gradients_R.ravel()[:, np.newaxis] ))))
     
-        #check if difference in gradients exceed a threshold
-        if np.maximum(diff_gradient_max_k, diff_gradient_max_R) > 10.:
-            print(i, diff_gradient_max_k, diff_gradient_max_R)
-            exit_flag = 1
-            break
-        
-        prev_gradient_max_k = gradient_max_k
-        prev_gradient_max_R = gradient_max_R
+        diff_gradient_max = gradient_max - prev_gradient_max
 
+        #check if gradient exceeded by a lot
+        #if diff_gradient_max>100:
+        #    print(i, gradient_max)
+        #    exit_flag = 1
+        #    break
+            
+        prev_gradient_max = gradient_max
+    
+
+        
         #check if k_temp has exceeded a threshold
         if np.max(k_temp)>10:
             exit_flag = 2
@@ -743,10 +741,11 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
                                                                 system,
                                                                 shift,
                                                                 displacement)
-        print(i, gradient_max_k, gradient_max_R,  poisson)
+        print(i, gradient_max,  poisson, energies.penalty_energy(R_init, k_temp, system) )
+        R_evolution = R_evolution.at[i+1].set(R_init)
     onp.savez(str(run), R_temp = R_temp, k_temp = k_temp, perturbation = perturbation, connectivity = system.E,
-             surface_nodes = system.surface_nodes, poisson = poisson, exit_flag = exit_flag)
-    return poisson, exit_flag, R_temp, k_temp, system, shift, displacement
+             k_angle = k_angle, surface_nodes = system.surface_nodes, poisson = poisson, exit_flag = exit_flag)
+    return poisson, exit_flag, R_temp, k_temp, system, shift, displacement, R_evolution
 
 
 #@profile
