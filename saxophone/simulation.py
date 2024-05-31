@@ -29,6 +29,124 @@ Result_forbidden_modes = namedtuple('Result', [
     'poisson'
 ])
 
+def simulate_minimize_penalty(R,
+                     k_bond,
+                     system,
+                     shift,
+                     displacement
+                     ):
+    """
+    minimizes using a System instance and is set to evaulate network's penalties only (spring constants and angle energy not included)
+
+    system: System instance containing the state and properties of the system
+    shift: shift parameter for the FIRE minimization
+    perturbation: total perturbation
+    delta_perturbation: perturbation step size
+    displacement: displacement function
+    steps: number of steps in the simulation
+    write_every: frequency of writing data
+    optimize: boolean to indicate whether to optimize the poisson ratio
+
+    Returns:
+    poisson: poisson ratio
+    log: log dictionary
+    R_init: initial positions
+    R_final: final positions
+    """
+    #update variables according to R so that the derivative accounts for them
+    system.X=R
+    displacement = system.displacement
+    system.create_spring_constants()
+    system.calculate_initial_angles_method(displacement)
+
+    # Get the surface nodes.
+    top_indices = system.surface_nodes['top']
+    bottom_indices = system.surface_nodes['bottom']
+    left_indices = system.surface_nodes['left']
+    right_indices = system.surface_nodes['right']
+
+    #fix all surface nodes
+    mask = np.ones(R.shape)
+    mask = mask.at[left_indices].set(0)
+    mask = mask.at[right_indices].set(0)
+    mask = mask.at[top_indices].set(0)
+    mask = mask.at[bottom_indices].set(0)
+
+    num_iterations = 1
+    cumulative_perturbation = 0.0
+
+    log = {
+            'force': onp.zeros((num_iterations*(system.steps // system.write_every),) + R.shape),
+            'position': onp.zeros((num_iterations*(system.steps // system.write_every),) + R.shape)
+    }
+
+    def step_fn_generator(apply, start_idx):
+        def step_fn(i, state_and_log):
+            """
+            Minimizes the configuration at each step.
+
+            i: step number
+            state_and_log: state and log dictionary
+            """
+            fire_state, log = state_and_log
+            i_adjusted = i + start_idx
+            log['force'] = lax.cond(i_adjusted % system.write_every == 0,
+                                        lambda p: p.at[i_adjusted // system.write_every].set(fire_state.force),
+                                        lambda p: p,
+                                        log['force'])
+
+            log['position'] = lax.cond(i_adjusted % system.write_every == 0,
+                                            lambda p: p.at[i_adjusted // system.write_every].set(fire_state.position),
+                                            lambda p: p,
+                                            log['position'])
+
+            fire_state = apply(fire_state)
+            return fire_state, log
+
+        return step_fn
+
+    def perturb_and_minimize(i, state_log_perturb):
+            R_current, log, cumulative_perturbation = state_log_perturb
+            R_perturbed = R_current#.at[left_indices, 0].add(system.delta_perturbation)
+            #cumulative_perturbation += system.delta_perturbation
+            # Update the force function with the new positions
+            force_fn = energies.constrained_force_fn(R_perturbed, energy_fn_wrapper, mask)
+    
+            # Reinitialize the fire state with the new positions and updated force function
+            fire_init, fire_apply = minimize.fire_descent(force_fn, shift, dt_max = 0.2)
+            fire_state = fire_init(R_perturbed)
+    
+            # Update step function generator with the new start index
+    
+            start_idx = i * (system.steps // system.write_every)
+    
+            step_fn = step_fn_generator(fire_apply, start_idx)
+    
+            # Perform the minimization step
+            fire_state, log = lax.fori_loop(0, system.steps, step_fn, (fire_state, log))
+            R_perturbed = fire_state.position
+    
+            return R_perturbed, log, cumulative_perturbation
+
+    def penalty_energy(R, system, **kwargs):
+        displacement = system.displacement
+        crossing_penalty = np.sum(energies.crossing_penalty_only(system, system.angle_triplets, displacement, R))
+        # Bond energy (assuming that simple_spring_bond is JAX-compatible)
+        node_energy = energy.soft_sphere_pair(displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
+
+        return crossing_penalty + node_energy
+
+    def energy_fn_wrapper(R, **kwargs):
+        return penalty_energy(R, system, **kwargs)
+
+    R_init = R
+
+    R_final, log, cumulative_perturbation = lax.fori_loop(0, num_iterations, perturb_and_minimize, (R_init, log, cumulative_perturbation))
+
+    print("Energy reduced from ", energies.penalty_energy(R_init, system)," to ", energies.penalty_energy(R_final, system))
+    
+    return R_init, R_final, log
+
 
 def simulate_auxetic(R,
                      k_bond,
@@ -194,7 +312,7 @@ def simulate_auxetic_wrapper(R,
     
         """             
         poisson, log, R_init , R_final = simulate_auxetic(R, k_bond, system, shift, displacement)
-        output = poisson + energies.penalty_energy(R_init, k_bond, system) / system.penalty_scale # penalty 
+        output = poisson + energies.penalty_energy(R_init, system) / system.penalty_scale # penalty 
         return output
     return simulate_auxetic_optimize
 
@@ -583,12 +701,11 @@ def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c,
     R = system.X
     k_bond = system.spring_constants
 
- 
-
-    
-    
     R_temp = R
     k_temp = k_bond
+
+
+
     
     exit_flag=0
     
@@ -687,6 +804,22 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
     shift = system.shift
     R = system.X
     k_bond = system.spring_constants
+
+    _, R ,_  = simulate_minimize_penalty(R,
+                                        k_bond,
+                                        system,
+                                        shift,
+                                        displacement)
+
+    system.X= R
+    displacement = system.displacement
+    system.create_spring_constants()
+    system.calculate_initial_angles_method(displacement)
+    k_bond = system.spring_constants
+    
+
+
+    
     auxetic_function = simulate_auxetic_wrapper(R, k_bond, system,shift,displacement)
     grad_auxetic = jit(grad(auxetic_function, argnums=0))
     grad_auxetic_k = jit(grad(auxetic_function, argnums=1))
@@ -694,6 +827,8 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
     
     R_temp = R
     k_temp = k_bond
+
+
     poisson = -10
     exit_flag=0
     """
@@ -741,7 +876,7 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
                                                                 system,
                                                                 shift,
                                                                 displacement)
-        print(i, gradient_max,  poisson, energies.penalty_energy(R_init, k_temp, system) )
+        print(i, gradient_max,  poisson, energies.penalty_energy(R_init, system) )
         R_evolution = R_evolution.at[i+1].set(R_init)
     onp.savez(str(run), R_temp = R_temp, k_temp = k_temp, perturbation = perturbation, connectivity = system.E,
              k_angle = k_angle, surface_nodes = system.surface_nodes, poisson = poisson, exit_flag = exit_flag)

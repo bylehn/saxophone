@@ -89,7 +89,7 @@ def crossing_penalty_only(system, triplets, displacement_fn, positions):
 #theta_0 = calculate_initial_angles(initial_positions, displacement_fn, E)
 #total_angle_energy = np.sum(vectorized_angle_energy(displacement_fn, k, theta_0, angle_triplets_data, current_positions))
 
-def penalty_energy(R, k_bond, system, **kwargs):
+def penalty_energy(R, system, **kwargs):
         displacement = system.displacement
         crossing_penalty = np.sum(crossing_penalty_only(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
