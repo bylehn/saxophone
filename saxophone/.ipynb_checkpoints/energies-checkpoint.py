@@ -1,7 +1,7 @@
 import jax.numpy as np
 from jax import vmap
 from saxophone.utils import compute_angle_between_triplet
-from jax_md import quantity
+from jax_md import quantity, util
 from jax import jit
 from jax_md import energy
 
@@ -50,11 +50,11 @@ def angle_energy(system, triplets, displacement_fn, positions):
     angles = vmap(angle)(triplets)
 
 
-    crossing_penalty = system.crossing_penalty_strength / (1 + np.exp( system.crossing_penalty_steepness*( angles - system.crossing_penalty_threshold ) ) )
-    return 0.5 * system.k_angles * ((angles - system.initial_angles)**2) + crossing_penalty
+    bond_crossing_penalty = crossing_penalty_function (system, angles)
+    return 0.5 * system.k_angles * ((angles - system.initial_angles)**2) + bond_crossing_penalty
 
 
-def crossing_penalty_only(system, triplets, displacement_fn, positions):
+def bond_crossing_penalty(system, triplets, displacement_fn, positions):
     """
     Calculates the harmonic angle energy for a triplet of nodes.
 
@@ -74,10 +74,19 @@ def crossing_penalty_only(system, triplets, displacement_fn, positions):
     
     angles = vmap(angle)(triplets)
 
+    bond_crossing_penalty = crossing_penalty_function (system, angles)
+    
+    return bond_crossing_penalty
 
-    crossing_penalty = system.crossing_penalty_strength / (1 + np.exp( system.crossing_penalty_steepness*( angles - system.crossing_penalty_threshold ) ) )
-    return crossing_penalty
-
+def crossing_penalty_function (system, angles):
+    """
+    a version of this bias that uses soft sphere formalism to apply a constraint
+    """
+    # old version return system.crossing_penalty_strength / (1 + np.exp( system.crossing_penalty_steepness*( angles - system.crossing_penalty_threshold ) ) )
+    da = angles / system.crossing_penalty_threshold
+    fn = lambda dr: system.crossing_penalty_strength / 2 * (util.f32(1.0) - da) ** 2
+    return np.where(da < 1.0, fn(da), util.f32(0.0))  / (1 + np.exp( 50.0*( da ) ) )
+    
 # Assume angle_triplets is an array of shape (num_angles, 3)
 # Each row in angle_triplets represents a set of indices (i, j, k)
 
@@ -91,7 +100,7 @@ def crossing_penalty_only(system, triplets, displacement_fn, positions):
 
 def penalty_energy(R, system, **kwargs):
         displacement = system.displacement
-        crossing_penalty = np.sum(crossing_penalty_only(system, system.angle_triplets, displacement, R))
+        crossing_penalty = np.sum(bond_crossing_penalty(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         node_energy = energy.soft_sphere_pair(displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
 

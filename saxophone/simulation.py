@@ -130,7 +130,7 @@ def simulate_minimize_penalty(R,
 
     def penalty_energy(R, system, **kwargs):
         displacement = system.displacement
-        crossing_penalty = np.sum(energies.crossing_penalty_only(system, system.angle_triplets, displacement, R))
+        crossing_penalty = np.sum(energies.bond_crossing_penalty(system, system.angle_triplets, displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
         node_energy = energy.soft_sphere_pair(displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
 
@@ -880,7 +880,9 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
         R_evolution = R_evolution.at[i+1].set(R_init)
     onp.savez(str(run), R_temp = R_temp, k_temp = k_temp, perturbation = perturbation, connectivity = system.E,
              k_angle = k_angle, surface_nodes = system.surface_nodes, poisson = poisson, exit_flag = exit_flag)
-    return poisson, exit_flag, R_temp, k_temp, system, shift, displacement, R_evolution
+
+    R_d = {'position' : R_evolution}
+    return poisson, exit_flag, R_temp, k_temp, system, shift, displacement, R_d
 
 
 #@profile
