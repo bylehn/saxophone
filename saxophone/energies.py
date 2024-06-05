@@ -84,8 +84,14 @@ def crossing_penalty_function (system, angles):
     """
     # old version return system.crossing_penalty_strength / (1 + np.exp( system.crossing_penalty_steepness*( angles - system.crossing_penalty_threshold ) ) )
     da = angles / system.crossing_penalty_threshold
-    fn = lambda dr: system.crossing_penalty_strength / 2 * (util.f32(1.0) - da) ** 2
-    return np.where(da < 1.0, fn(da), util.f32(0.0))  / (1 + np.exp( 50.0*( da ) ) )
+    fn = lambda da: system.crossing_penalty_strength / 2 * (util.f32(1.0) - da) ** 2 
+    fn2 = lambda da: 1.0 / (1.0+ np.exp( 50.0*( da - 1.0 ) ) )
+
+    soft_function = np.where(da < 1.0, fn(da), util.f32(0.0)) + 1e-3
+    #np.where(da < 1.0, fn(da), util.f32(0.0)) 
+    sigmoid = fn2(da)
+    
+    return soft_function * sigmoid 
     
 # Assume angle_triplets is an array of shape (num_angles, 3)
 # Each row in angle_triplets represents a set of indices (i, j, k)
@@ -99,9 +105,12 @@ def crossing_penalty_function (system, angles):
 #total_angle_energy = np.sum(vectorized_angle_energy(displacement_fn, k, theta_0, angle_triplets_data, current_positions))
 
 def penalty_energy(R, system, **kwargs):
-        displacement = system.displacement
-        crossing_penalty = np.sum(bond_crossing_penalty(system, system.angle_triplets, displacement, R))
-        # Bond energy (assuming that simple_spring_bond is JAX-compatible)
-        node_energy = energy.soft_sphere_pair(displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
+    """
+    provides per node penalty energy
+    """
+    displacement = system.displacement
+    crossing_penalty = np.sum(bond_crossing_penalty(system, system.angle_triplets, displacement, R))
+    # Bond energy (assuming that simple_spring_bond is JAX-compatible)
+    node_energy = energy.soft_sphere_pair(displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
 
-        return (crossing_penalty + node_energy)/system.N
+    return (crossing_penalty + node_energy)/system.N

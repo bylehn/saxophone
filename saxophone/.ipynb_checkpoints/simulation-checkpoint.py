@@ -839,7 +839,9 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
     """
     prev_gradient_max = 0
     R_evolution = np.zeros((opt_steps, system.N, 2))
-    R_evolution = R_evolution.at[0].set(R)
+    R_evolution = R_evolution.at[0].set(R_temp)
+    k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
+    k_evolution = k_evolution.at[0].set(k_temp)
     for i in range(opt_steps):
 
         #evaluate gradients for bond stiffness and positions
@@ -876,13 +878,18 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
                                                                 system,
                                                                 shift,
                                                                 displacement)
+        
         print(i, gradient_max,  poisson, energies.penalty_energy(R_init, system) )
+
+        #set evolution bits for the network
         R_evolution = R_evolution.at[i+1].set(R_init)
+        k_evolution = k_evolution.at[i+1].set(k_temp)
+        
     onp.savez(str(run), R_temp = R_temp, k_temp = k_temp, perturbation = perturbation, connectivity = system.E,
              k_angle = k_angle, surface_nodes = system.surface_nodes, poisson = poisson, exit_flag = exit_flag)
 
-    R_d = {'position' : R_evolution}
-    return poisson, exit_flag, R_temp, k_temp, system, shift, displacement, R_d
+    evolution_log = {'position' : R_evolution, 'bond_strengths' : k_evolution}
+    return poisson, exit_flag, R_temp, k_temp, system, shift, displacement, evolution_log
 
 
 #@profile

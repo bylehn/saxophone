@@ -30,7 +30,7 @@ class System:
         self.crossing_penalty_strength = 2.0 # epsilon of soft angle strength
         self.crossing_penalty_threshold = 0.3 #radians
 
-        self.penalty_scale = 1e-8 #per node penalty energy that scales to 1 unit in objective functions
+        self.penalty_scale = 1e-5 #per node penalty energy that scales to 1 unit in objective functions
        
         
         # Initialize attributes
@@ -285,7 +285,7 @@ def poisson_ratio(initial_horizontal, initial_vertical, final_horizontal, final_
     return -delta_vertical / delta_horizontal
 
 @jit
-def update_kbonds(gradients, k_bond, learning_rate = 0.1, min_k = 0.0):
+def update_kbonds(gradients, k_bond, learning_rate = 0.1, min_k = 0.05):
     """
     Updates spring constants based on gradients.
 
@@ -297,8 +297,8 @@ def update_kbonds(gradients, k_bond, learning_rate = 0.1, min_k = 0.0):
     """
     gradients_perpendicular = gradients - np.mean(gradients)
     gradients_normalized = gradients_perpendicular / np.max(gradients_perpendicular)
-    k_bond_new = min_k +  (1 - min_k) * k_bond * (1 - learning_rate * gradients_normalized)
-#add min k
+    k_bond_new = min_k +  (k_bond - min_k) * (1 - learning_rate * gradients_normalized)
+
     return k_bond_new
 
 @jit
