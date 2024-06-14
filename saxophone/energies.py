@@ -84,14 +84,13 @@ def crossing_penalty_function (system, angles):
     """
     # old version return system.crossing_penalty_strength / (1 + np.exp( system.crossing_penalty_steepness*( angles - system.crossing_penalty_threshold ) ) )
     da = angles / system.crossing_penalty_threshold
-    fn = lambda da: system.crossing_penalty_strength / 2 * (util.f32(1.0) - da) ** 2 
-    fn2 = lambda da: 1.0 / (1.0+ np.exp( 50.0*( da - 1.0 ) ) )
-
-    soft_function = np.where(da < 1.0, fn(da), util.f32(0.0)) + 1e-3
+    soft_fn = lambda da: system.crossing_penalty_strength / 2 * (util.f32(1.0) - da) ** 2 
+    sigmoid_fn = lambda da: 1.0 / (1.0+ np.exp( 50.0*( da - 1.0 ) ) )  #0.02 is a workable width of this transition function between the soft potential and absolutely zero, this avoids the gradients to be surprised by presence of a force they don't anticipate outside the cutoff and thus do not oscillate.
+    soft_potential = np.where(da < 1.0, soft_fn(da), util.f32(0.0)) + 1e-3
     #np.where(da < 1.0, fn(da), util.f32(0.0)) 
-    sigmoid = fn2(da)
+    sigmoid_function = sigmoid_fn(da)
     
-    return soft_function * sigmoid 
+    return soft_potential * sigmoid_function
     
 # Assume angle_triplets is an array of shape (num_angles, 3)
 # Each row in angle_triplets represents a set of indices (i, j, k)

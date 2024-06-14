@@ -20,7 +20,7 @@ class System:
         self.k_angle = k_angle
 
 
-        #penalty parameters: node and bond cross: 
+        #penalty parameters: node and bond crossing: 
         
         #node energy attrbutes 
         self.soft_sphere_sigma = 0.3 #diameter
