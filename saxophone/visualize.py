@@ -168,7 +168,7 @@ def makemovie_bondwidth_labels(system, k, traj, amp=1., xylims=9., stride=10):
     plt.show()
     return ani
 
-def makemovieDOS(system, k, traj,stride=10):
+def makemovieDOS(system, k, traj, stride=10):
 
     # Set style
     sns.set_style(style='white')
