@@ -22,7 +22,61 @@ def finalize_plot(shape=(1, 1)):
   plt.tight_layout()
 
 
+def makemovie_evolution(system, traj, amp=1., xylims=9., stride=10):
+    """
+    a version of makemovie that takes in the evolution trajectory from optimization tasks to show how k and R evolve in the course of optimization
+    """
+    # Set style
+    sns.set_style(style='white')
+    
 
+    # Create the animation
+    fig_length = 5 #inches
+    dots_per_inch = 100
+    fig, ax = plt.subplots(figsize=(fig_length, fig_length), dpi = dots_per_inch)
+
+    #ax.set_aspect('equal', adjustable='box')
+
+
+    # Define the init function, which sets up the plot
+    def init():
+
+        plt.axis('on')
+        return plt
+
+    # Define the update function, which is called for each frame
+    def update(frame):
+
+        plt.clf()  # Clear the current figure
+        R_plt = traj['position'][frame]
+        R_0 = traj['position'][0]
+        R_plt = R_0 + amp * (R_plt - R_0)
+        k = np.squeeze(traj['bond_strengths'][frame])
+        
+
+        pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
+        
+        nx.draw_networkx_edges(system.G, pos, width=2*k*system.distances, alpha=0.6,edge_color='k')
+
+        diameter_in_data_units = system.soft_sphere_sigma
+        size_in_points = (2*np.exp(1)* diameter_in_data_units * fig_length*10/xylims)**2 # arbitrary factor of 5.43 = 2e (Cesar's contrib); remove the 10/xylims factor when doing it outside of this function ¯\_(ツ)_/¯
+
+        nx.draw_networkx_nodes(system.G, pos, node_size=size_in_points, node_color='k', linewidths = 0.0, alpha=0.25)
+
+        plt.xlim([0, xylims])
+        plt.ylim([0, xylims])
+        plt.gca().set_aspect('equal')
+
+        return plt
+
+
+    
+    ani = FuncAnimation(fig, update, frames=range(0, len(traj['position']), stride), init_func=init, blit=False)
+    ani.save('compressedexample.gif', writer='imagemagick')
+    # Display the animation
+    display(HTML(ani.to_jshtml()))
+    plt.show()
+    return ani
 
 def makemovie(system, k, traj, amp=1., xylims=9., stride=10):
     """
@@ -80,6 +134,8 @@ def makemovie(system, k, traj, amp=1., xylims=9., stride=10):
     plt.show()
     return ani
 
+
+
 def makemovie_bondwidth_labels(system, k, traj, amp=1., xylims=9., stride=10):
     sns.set_style(style='white')
     k = np.squeeze(k)
@@ -112,7 +168,7 @@ def makemovie_bondwidth_labels(system, k, traj, amp=1., xylims=9., stride=10):
     plt.show()
     return ani
 
-def makemovieDOS(system, k, traj,stride=10):
+def makemovieDOS(system, k, traj, stride=10):
 
     # Set style
     sns.set_style(style='white')
