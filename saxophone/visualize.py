@@ -25,6 +25,8 @@ def finalize_plot(shape=(1, 1)):
 def makemovie_evolution(system, traj, amp=1., xylims=9., stride=10):
     """
     a version of makemovie that takes in the evolution trajectory from optimization tasks to show how k and R evolve in the course of optimization
+    the amplification works on bond constants too to amplify the changes
+    the traj file is output from generate functions if the specified output_evolution is set to True and proper output is stored.
     """
     # Set style
     sns.set_style(style='white')
@@ -51,12 +53,16 @@ def makemovie_evolution(system, traj, amp=1., xylims=9., stride=10):
         R_plt = traj['position'][frame]
         R_0 = traj['position'][0]
         R_plt = R_0 + amp * (R_plt - R_0)
-        k = np.squeeze(traj['bond_strengths'][frame])
+    
+        k_0 = np.squeeze(traj['bond_strengths'][0])
+        k_plt = np.squeeze(traj['bond_strengths'][frame])
+        k_ratio = k_plt / k_0
+        k_plt = k_0  * (np.abs(k_ratio)**amp) * onp.sign(k_ratio)
         
 
         pos = {i: (R_plt[i, 0], R_plt[i, 1]) for i in range(system.N)}
         
-        nx.draw_networkx_edges(system.G, pos, width=2*k*system.distances, alpha=0.6,edge_color='k')
+        nx.draw_networkx_edges(system.G, pos, width=2*k_plt*system.distances, alpha=0.6,edge_color='k')
 
         diameter_in_data_units = system.soft_sphere_sigma
         size_in_points = (2*np.exp(1)* diameter_in_data_units * fig_length*10/xylims)**2 # arbitrary factor of 5.43 = 2e (Cesar's contrib); remove the 10/xylims factor when doing it outside of this function ¯\_(ツ)_/¯
