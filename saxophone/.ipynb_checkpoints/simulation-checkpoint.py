@@ -682,7 +682,7 @@ def acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed
 
 #Generate Functional Network Functions for Parameter Sweeps
 
-def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, opt_steps):
+def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, opt_steps, output_evolution = False):
     #run: kinda a random number seed
     
     #parameters
@@ -719,11 +719,13 @@ def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c,
     R_temp = R
     k_temp = k_bond
 
-    #set up evolution bits
-    R_evolution = np.zeros((opt_steps, system.N, 2))
-    R_evolution = R_evolution.at[0].set(R_temp)
-    k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
-    k_evolution = k_evolution.at[0].set(k_temp)
+
+    if output_evolution:
+        #set up evolution bits
+        R_evolution = np.zeros((opt_steps, system.N, 2))
+        R_evolution = R_evolution.at[0].set(R_temp)
+        k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
+        k_evolution = k_evolution.at[0].set(k_temp)
 
     
     exit_flag=0
@@ -774,8 +776,9 @@ def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c,
         print(i, gradient_max, bandgap_contrast - energies.penalty_energy(R_temp, system)/system.penalty_scale, energies.penalty_energy(R_temp, system) )
         
         #set evolution bits for the network
-        R_evolution = R_evolution.at[i+1].set(R_temp)
-        k_evolution = k_evolution.at[i+1].set(k_temp)
+        if output_evolution:
+            R_evolution = R_evolution.at[i+1].set(R_temp)
+            k_evolution = k_evolution.at[i+1].set(k_temp)
 
     result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
     np.savez(str(run), 
@@ -788,12 +791,13 @@ def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c,
              forbidden_states_init = result.forbidden_states_init,
              forbidden_states_final = result.forbidden_states_final,
              exit_flag = exit_flag)
-    
-    evolution_log = {'position' : R_evolution, 'bond_strengths' : k_evolution}
-    
-    return bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement#, evolution_log
+    if output_evolution:
+        evolution_log = {'position' : R_evolution, 'bond_strengths' : k_evolution}
+        return bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement, evolution_log
+    else:
+        return bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement
 
-def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_steps):
+def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_steps, output_evolution = False):
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
@@ -834,6 +838,12 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
     R_temp = R
     k_temp = k_bond
 
+    if output_evolution:
+        R_evolution = np.zeros((opt_steps, system.N, 2))
+        R_evolution = R_evolution.at[0].set(R_temp)
+        k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
+        k_evolution = k_evolution.at[0].set(k_temp)
+
 
     poisson = -10
     exit_flag=0
@@ -844,10 +854,9 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
     
     """
     prev_gradient_max = 0
-    R_evolution = np.zeros((opt_steps, system.N, 2))
-    R_evolution = R_evolution.at[0].set(R_temp)
-    k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
-    k_evolution = k_evolution.at[0].set(k_temp)
+
+
+
     for i in range(opt_steps):
 
         #evaluate gradients for bond stiffness and positions
@@ -881,19 +890,22 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
         
         print(i, gradient_max,  poisson, energies.penalty_energy(R_init, system) )
 
-        #set evolution bits for the network
-        R_evolution = R_evolution.at[i+1].set(R_temp)
-        k_evolution = k_evolution.at[i+1].set(k_temp)
+
+        if output_evolution:
+            #set evolution bits for the network
+            R_evolution = R_evolution.at[i+1].set(R_temp)
+            k_evolution = k_evolution.at[i+1].set(k_temp)
         
     onp.savez(str(run), R_temp = R_temp, k_temp = k_temp, perturbation = perturbation, connectivity = system.E,
              k_angle = k_angle, surface_nodes = system.surface_nodes, poisson = poisson, exit_flag = exit_flag)
-
-    evolution_log = {'position' : R_evolution, 'bond_strengths' : k_evolution}
-    return poisson, exit_flag, R_temp, k_temp, system, shift, displacement#, evolution_log
-
+    if output_evolution:
+        evolution_log = {'position' : R_evolution, 'bond_strengths' : k_evolution}
+        return poisson, exit_flag, R_temp, k_temp, system, shift, displacement, evolution_log
+    else: 
+        return poisson, exit_flag, R_temp, k_temp, system, shift, displacement
 
 #@profile
-def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, poisson_target, opt_steps):
+def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, poisson_target, opt_steps, output_evolution = False):
 
     """
     run: run id, also used to as random seed
@@ -935,11 +947,12 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
     R_temp = R
     k_temp = k_bond
 
-    #set up evolution bits
-    R_evolution = np.zeros((opt_steps, system.N, 2))
-    R_evolution = R_evolution.at[0].set(R_temp)
-    k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
-    k_evolution = k_evolution.at[0].set(k_temp)
+    if output_evolution:
+        #set up evolution bits
+        R_evolution = np.zeros((opt_steps, system.N, 2))
+        R_evolution = R_evolution.at[0].set(R_temp)
+        k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
+        k_evolution = k_evolution.at[0].set(k_temp)
 
 
     exit_flag = 0
@@ -1047,9 +1060,10 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
         
         print(i, gradient_max, bandgap_distance, poisson_distance, forbidden_states_init, forbidden_states_final, poisson, energies.penalty_energy(R_temp, system))
         
-        #set evolution bits for the network
-        R_evolution = R_evolution.at[i+1].set(R_temp)
-        k_evolution = k_evolution.at[i+1].set(k_temp)
+        if output_evolution: 
+            #set evolution bits for the network
+            R_evolution = R_evolution.at[i+1].set(R_temp)
+            k_evolution = k_evolution.at[i+1].set(k_temp)
    
     np.savez(str(run), 
              R_temp = R_temp, 
@@ -1063,13 +1077,14 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
              forbidden_states_init = result.forbidden_states_init,
              forbidden_states_final = result.forbidden_states_final,
              exit_flag = exit_flag)
+    if output_evolution:
+        
+        evolution_log = {'position' : R_evolution, 'bond_strengths' : k_evolution}
+        return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result, evolution_log
+    else:
+        return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result
 
-    evolution_log = {'position' : R_evolution, 'bond_strengths' : k_evolution}
-    
-    return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result#, evolution_log
-
-
-def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, perturbation, frequency_closed, width_closed, frequency_opened, width_opened, poisson_target, opt_steps):
+def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, perturbation, frequency_closed, width_closed, frequency_opened, width_opened, poisson_target, opt_steps, output_evolution = False):
 
     """
     run: run id, also used to as random seed
@@ -1116,11 +1131,12 @@ def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, pert
     R_temp = R
     k_temp = k_bond
 
-    #set up evolution bits
-    R_evolution = np.zeros((opt_steps, system.N, 2))
-    R_evolution = R_evolution.at[0].set(R_temp)
-    k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
-    k_evolution = k_evolution.at[0].set(k_temp)
+    if output_evolution:
+        #set up evolution bits
+        R_evolution = np.zeros((opt_steps, system.N, 2))
+        R_evolution = R_evolution.at[0].set(R_temp)
+        k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
+        k_evolution = k_evolution.at[0].set(k_temp)
 
 
     k_fit_closed = 2.0/(width_closed**2) 
@@ -1232,10 +1248,11 @@ def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, pert
     
         
         print(i, gradient_max, bandgap_distance, poisson_distance,  closed_contrast_ratio, opened_contrast_ratio, poisson, energies.penalty_energy(R_temp, system))
-        
-        #set evolution bits for the network
-        R_evolution = R_evolution.at[i+1].set(R_temp)
-        k_evolution = k_evolution.at[i+1].set(k_temp)
+
+        if output_evolution:
+            #set evolution bits for the network
+            R_evolution = R_evolution.at[i+1].set(R_temp)
+            k_evolution = k_evolution.at[i+1].set(k_temp)
 
 
     closed_contrasts = [utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed), utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed)]
@@ -1255,5 +1272,9 @@ def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, pert
              opened_contrasts = opened_contrasts,
              forbidden_states_final = result.forbidden_states_final,
              exit_flag = exit_flag)
-    evolution_log = {'position' : R_evolution, 'bond_strengths' : k_evolution}
-    return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result #, evolution_log
+
+    if output_evolution:
+        evolution_log = {'position' : R_evolution, 'bond_strengths' : k_evolution}
+        return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result , evolution_log
+    else: 
+        return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result
