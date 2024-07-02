@@ -84,6 +84,9 @@ def makemovie_evolution(system, traj, amp=1., xylims=9., stride=10):
     plt.show()
     return ani
 
+
+
+
 def makemovie(system, k, traj, amp=1., xylims=9., stride=10):
     """
     a cleaned up version of makemovie that plots nodes as well to the size of the soft sphere diameter
@@ -191,6 +194,47 @@ def makemovieDOS(system, k, traj, stride=10):
         R_plt = traj['position'][frame]
         C = simulation.create_compatibility(system, R_plt)
         D, V, forbidden_states,_ = simulation.get_forbidden_states(C, k, system)
+        plt.hist(onp.sqrt(onp.abs(D)), bins=onp.arange(-0.025, 3.025, 0.05), density=False)
+        plt.xlabel(r'$\omega$')
+        plt.ylabel(r'$C (\omega)$')
+        print(forbidden_states)
+        plt.gca().yaxis.set_major_locator(mpl.ticker.MaxNLocator(integer=True))
+        #plt.ylim(0,5)
+        plt.axis('on')
+        return plt
+
+    # Create the animation
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ani = FuncAnimation(fig, update, frames=range(0, len(traj['position']), stride), init_func=init, blit=False)
+    ani.save('compressedDOS0.2.gif', writer='imagemagick')
+    # Display the animation
+    display(HTML(ani.to_jshtml()))
+    plt.show()
+    return ani
+
+
+def makemovieDOS_evolution(system, traj, stride=1):
+
+    # Set style
+    sns.set_style(style='white')
+
+    # Define the init function, which sets up the plot
+    def init():
+
+        plt.axis('on')
+        return plt
+
+    # Define the update function, which is called for each frame
+    def update(frame):
+        plt.clf()  # Clear the current figure
+        R_plt = traj['position'][frame]
+
+    
+        k_plt = np.squeeze(traj['bond_strengths'][frame])
+
+        
+        C = simulation.create_compatibility(system, R_plt)
+        D, V, forbidden_states,_ = simulation.get_forbidden_states(C, k_plt, system)
         plt.hist(onp.sqrt(onp.abs(D)), bins=onp.arange(-0.025, 3.025, 0.05), density=False)
         plt.xlabel(r'$\omega$')
         plt.ylabel(r'$C (\omega)$')
