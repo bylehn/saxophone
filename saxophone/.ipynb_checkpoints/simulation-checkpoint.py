@@ -1164,7 +1164,7 @@ def generate_auxetic_acoustic_adaptive_combo(run, number_of_nodes_per_side, k_an
 
     forbidden_states_init = result.forbidden_states_init
     forbidden_states_final = result.forbidden_states_final
-    excess_states = 0.0 #forbidden_states_init*0.1 #these allow for the initial states to get accumulated beyond the original levels 
+    excess_states = 0.0#forbidden_states_init*0.5 #these allow for the initial states to get accumulated beyond the original levels 
     
     print('initial forbidden states: ', forbidden_states_init) 
     

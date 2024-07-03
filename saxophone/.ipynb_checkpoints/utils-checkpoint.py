@@ -284,6 +284,31 @@ def poisson_ratio(initial_horizontal, initial_vertical, final_horizontal, final_
 
     return -delta_vertical / delta_horizontal
 
+def poisson_from_config(system, R_init, R_final):
+    top_indices = system.surface_nodes['top']
+    bottom_indices = system.surface_nodes['bottom']
+    left_indices = system.surface_nodes['left']
+    right_indices = system.surface_nodes['right']
+    # Initial dimensions (before deformation)
+    # Exclude the first and last index for horizontal edges (top and bottom)
+    # as these are corners with the left and right edges
+    initial_horizontal = onp.mean(R_init[right_indices[1:-1]], axis=0)[0] - onp.mean(R_init[left_indices[1:-1]], axis=0)[0]
+
+    # Exclude the first and last index for vertical edges (left and right)
+    # as these are corners with the top and bottom edges
+    initial_vertical = onp.mean(R_init[top_indices[1:-1]], axis=0)[1] - onp.mean(R_init[bottom_indices[1:-1]], axis=0)[1]
+
+    # Final dimensions (after deformation)
+    final_horizontal = onp.mean(R_final[right_indices[1:-1]], axis=0)[0] - onp.mean(R_final[left_indices[1:-1]], axis=0)[0]
+    final_vertical = onp.mean(R_final[top_indices[1:-1]], axis=0)[1] - onp.mean(R_final[bottom_indices[1:-1]], axis=0)[1]
+
+
+    delta_horizontal = final_horizontal - initial_horizontal
+    delta_vertical = final_vertical - initial_vertical
+    # Calculate the poisson ratio.
+    return [-delta_vertical / delta_horizontal , delta_horizontal, delta_vertical]
+
+
 @jit
 def update_kbonds(gradients, k_bond, learning_rate = 0.1, min_k = 0.05):
     """
