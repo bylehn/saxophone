@@ -9,13 +9,13 @@ class GetBranchedBro:
         
     def periodic_distance(self, d):
         for dims in range(2):
-            if np.abs(d[dims]) < self.L/2:
+            if np.abs(d[dims]) < self.L[dims]/2:
                 pass
             else:
                 if d[dims]>0:
-                    d[dims] -= self.L/2
+                    d[dims] -= self.L[dims]/2
                 else:
-                    d[dims] += self.L/2
+                    d[dims] += self.L[dims]/2
         return d
         
     def FT_compatability(self, C, N, X, E, q):
@@ -26,8 +26,8 @@ class GetBranchedBro:
             R_v = R_u + b_vec
             R_uv = (R_u + b_vec)
             for d in range(2):
-                C_ft[2*v+d, ei] *= np.exp(-1j*q@(R_v - R_uv)*((-1) ** d))
-                C_ft[2*u+d, ei] *= np.exp(-1j*q@(R_u - R_uv)*((-1) ** d))
+                C_ft[2*v+d, ei] *= np.exp(-1j*q@(R_v - R_uv)) #*((-1) ** d))
+                C_ft[2*u+d, ei] *= np.exp(-1j*q@(R_u - R_uv)) #*((-1) ** d))
         return C_ft
 
     def getDV(self, Cq, k, M):
