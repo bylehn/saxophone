@@ -24,7 +24,7 @@ class GetBranchedBro:
             R_u = X[u]
             b_vec = self.periodic_distance(X[v, :] - X[u, :])
             R_v = R_u + b_vec
-            R_uv = (R_u + b_vec)
+            R_uv = (R_u + 0.5*b_vec)
             for d in range(2):
                 C_ft[2*v+d, ei] *= np.exp(-1j*q@(R_v - R_uv)) #*((-1) ** d))
                 C_ft[2*u+d, ei] *= np.exp(-1j*q@(R_u - R_uv)) #*((-1) ** d))
