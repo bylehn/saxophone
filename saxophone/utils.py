@@ -12,7 +12,7 @@ from jax_md import quantity, space
 
 # %%
 class System:
-    def __init__(self, nr_points, k_angle, random_seed, r_circle, dx):
+    def __init__(self, nr_points, k_angle, random_seed, r_circle, dx, periodic = False):
         self.nr_points = nr_points
         self.random_seed = random_seed
         self.r_circle = r_circle
@@ -69,14 +69,17 @@ class System:
 
 # %%
 
-    def initialize(self):
+    def initialize(self, periodic = False):
         """
         Initializes the system by setting up the graph, calculating necessary properties,
         and preparing the system for simulation.
         """
-        self.create_delaunay_graph()
+        if periodic: 
+            self.create_periodic_graph()
+        else:
+            self.create_delaunay_graph()
+            displacement, shift = space.free()
         R = self.X
-        displacement, shift = space.free()
         self.displacement = displacement
         self.shift = shift
         self.get_mass()
