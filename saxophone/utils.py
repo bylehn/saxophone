@@ -84,6 +84,7 @@ class System:
             self.create_delaunay_graph()
             self.displacement = displacement
             self.shift = shift
+            self.box_size = self.nr_points + 1
         
         R = self.X
 
@@ -91,7 +92,7 @@ class System:
         self.m = np.ones(self.N)
         self.create_spring_constants()
         self.calculate_angle_triplets_method()
-        self.calculate_initial_angles_method(self.displacement)
+        self.calculate_initial_angles_method()
         self.k_angles = (2*self.k_angle/ ( self.degrees* (self.degrees-1) ) ) [self.angle_triplets[:,1]]  #equal distribution of angle stiffness to all triplets centred on a node 
        
     def auxetic_parameters(self, perturbation=1., delta_perturbation=0.1, steps=50, write_every=1):
@@ -338,7 +339,7 @@ class System:
         """
         self.angle_triplets = calculate_angle_triplets(self.E)  
 
-    def calculate_initial_angles_method(self, displacement):
+    def calculate_initial_angles_method(self):
         """
         Wrapper method to calculate the initial angles for each triplet of nodes.
         """

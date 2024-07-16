@@ -32,18 +32,14 @@ Result_forbidden_modes = namedtuple('Result', [
 
 def simulate_periodic(R,
                      k_bond,
-                     system,
-                     shift,
-                     displacement
+                     system
                      ):
     """
     minimizes a periodic system using a System instance and is set to evaulate network's penalties only (spring constants and angle energy not included)
 
     system: System instance containing the state and properties of the system
-    shift: shift parameter for the FIRE minimization
     perturbation: total perturbation
     delta_perturbation: perturbation step size
-    displacement: displacement function
     steps: number of steps in the simulation
     write_every: frequency of writing data
     optimize: boolean to indicate whether to optimize the poisson ratio
@@ -96,7 +92,7 @@ def simulate_periodic(R,
             # Update the force function with the new positions
                
             # Reinitialize the fire state with the new positions and updated force function
-            fire_init, fire_apply = minimize.fire_descent(energy_fn_wrapper, shift, dt_max = 0.2)
+            fire_init, fire_apply = minimize.fire_descent(energy_fn_wrapper, system.shift, dt_max = 0.2)
             fire_state = fire_init(R_perturbed)
     
             # Update step function generator with the new start index
@@ -112,10 +108,10 @@ def simulate_periodic(R,
             return R_perturbed, log, cumulative_perturbation
 
     def energy_fn(R, system, **kwargs):
-        angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
+        angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, system.displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
-        bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
-        node_energy = energy.soft_sphere_pair(displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
+        bond_energy = energy.simple_spring_bond(system.displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
+        node_energy = energy.soft_sphere_pair(system.displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
 
         return bond_energy + angle_energy + node_energy
 
@@ -134,17 +130,14 @@ def simulate_periodic(R,
 def simulate_minimize_penalty(R,
                      k_bond,
                      system,
-                     shift,
-                     displacement
                      ):
     """
     minimizes using a System instance and is set to evaulate network's penalties only (spring constants and angle energy not included)
 
     system: System instance containing the state and properties of the system
-    shift: shift parameter for the FIRE minimization
     perturbation: total perturbation
     delta_perturbation: perturbation step size
-    displacement: displacement function
+
     steps: number of steps in the simulation
     write_every: frequency of writing data
     optimize: boolean to indicate whether to optimize the poisson ratio
@@ -157,9 +150,9 @@ def simulate_minimize_penalty(R,
     """
     #update variables according to R so that the derivative accounts for them
     system.X=R
-    displacement = system.displacement
+    
     system.create_spring_constants()
-    system.calculate_initial_angles_method(displacement)
+    system.calculate_initial_angles_method()
 
     # Get the surface nodes.
     top_indices = system.surface_nodes['top']
@@ -215,7 +208,7 @@ def simulate_minimize_penalty(R,
             force_fn = energies.constrained_force_fn(R_perturbed, energy_fn_wrapper, mask)
     
             # Reinitialize the fire state with the new positions and updated force function
-            fire_init, fire_apply = minimize.fire_descent(force_fn, shift, dt_max = 0.2)
+            fire_init, fire_apply = minimize.fire_descent(force_fn, system.shift, dt_max = 0.2)
             fire_state = fire_init(R_perturbed)
     
             # Update step function generator with the new start index
@@ -231,10 +224,10 @@ def simulate_minimize_penalty(R,
             return R_perturbed, log, cumulative_perturbation
 
     def penalty_energy(R, system, **kwargs):
-        displacement = system.displacement
-        crossing_penalty = np.sum(energies.bond_crossing_penalty(system, system.angle_triplets, displacement, R))
+        
+        crossing_penalty = np.sum(energies.bond_crossing_penalty(system, system.angle_triplets, system.displacement, R))
         # Bond energy (assuming that simple_spring_bond is JAX-compatible)
-        node_energy = energy.soft_sphere_pair(displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
+        node_energy = energy.soft_sphere_pair(system.displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
 
         return crossing_penalty + node_energy
 
@@ -276,9 +269,8 @@ def simulate_auxetic(R,
     """
     #update variables according to R so that the derivative accounts for them
     system.X=R
-    displacement = system.displacement
     system.create_spring_constants()
-    system.calculate_initial_angles_method(displacement)
+    system.calculate_initial_angles_method()
 
     # Get the surface nodes.
     top_indices = system.surface_nodes['top']
@@ -808,24 +800,20 @@ def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c,
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
-    displacement = system.displacement
-    shift = system.shift
     R = system.X
     k_bond = system.spring_constants
-
+    displacement = system.displacement
+    shift = system.shift
 
     #minimizing the initial configuration
 
     _, R ,_  = simulate_minimize_penalty(R,
                                         k_bond,
-                                        system,
-                                        shift,
-                                        displacement)
+                                        system)
 
     system.X= R
-    displacement = system.displacement
     system.create_spring_constants()
-    system.calculate_initial_angles_method(displacement)
+    system.calculate_initial_angles_method()
     k_bond = system.spring_constants
     R_temp = R
     k_temp = k_bond
@@ -922,14 +910,12 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
 
     _, R ,_  = simulate_minimize_penalty(R,
                                         k_bond,
-                                        system,
-                                        shift,
-                                        displacement)
+                                        system)
 
     system.X= R
-    displacement = system.displacement
+
     system.create_spring_constants()
-    system.calculate_initial_angles_method(displacement)
+    system.calculate_initial_angles_method()
     k_bond = system.spring_constants
     
 
@@ -1040,14 +1026,11 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
 
     _, R ,_  = simulate_minimize_penalty(R,
                                         k_bond,
-                                        system,
-                                        shift,
-                                        displacement)
+                                        system)
 
     system.X= R
-    displacement = system.displacement
     system.create_spring_constants()
-    system.calculate_initial_angles_method(displacement)
+    system.calculate_initial_angles_method()
     k_bond = system.spring_constants
     R_temp = R
     k_temp = k_bond
@@ -1196,14 +1179,12 @@ def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, pert
 
     _, R ,_  = simulate_minimize_penalty(R,
                                         k_bond,
-                                        system,
-                                        shift,
-                                        displacement)
+                                        system)
 
     system.X= R
-    displacement = system.displacement
+ 
     system.create_spring_constants()
-    system.calculate_initial_angles_method(displacement)
+    system.calculate_initial_angles_method()
     k_bond = system.spring_constants
     R_temp = R
     k_temp = k_bond
