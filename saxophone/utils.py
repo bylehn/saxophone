@@ -3,17 +3,17 @@ import jax.numpy as np
 import numpy as onp
 import networkx as nx
 from scipy.spatial import Delaunay
-from jax import vmap
-from jax import jit
-from jax import random  
+ 
 from jax.config import config; config.update("jax_enable_x64", True)
-from jax_md import quantity, space
+
+from jax import jit, grad, vmap, random, lax
+from jax_md import quantity, space, energy, minimize
 
 
 # %%
 class System:
     def __init__(self, nr_points, k_angle, random_seed, r_circle, dx, periodic = False):
-        self.nr_points = nr_points
+        self.nr_points = nr_points #per side
         self.random_seed = random_seed
         self.r_circle = r_circle
         self.dx = dx
@@ -42,9 +42,10 @@ class System:
         self.X = None
         self.E = None
         self.L = None
+        self.box_size = None
         self.surface_nodes = None  
         self.surface_mask = None
-        self.surface_bond_mask = None
+        self.surface_bond_mask = None  #not being used
         self.mass = None
         self.spring_constants = None
         self.distances = None
@@ -52,6 +53,7 @@ class System:
         self.initial_angles = None
         self.displacement = None
         self.shift = None
+        
         # Acoustic properties
         self.m = None
         self.frequency_center = None
@@ -60,6 +62,7 @@ class System:
         self.success_fraction = 0.05
         self.nr_trials = None
         self.degrees = None
+        
         # Auxetic properties
         self.perturbation = 1.
         self.delta_perturbation = 0.1
@@ -75,21 +78,22 @@ class System:
         and preparing the system for simulation.
         """
         if periodic: 
-            self.create_periodic_graph()
+            self.create_periodic_graph() #this function should assign the displacementand shift
         else:
-            self.create_delaunay_graph()
             displacement, shift = space.free()
+            self.create_delaunay_graph()
+            self.displacement = displacement
+            self.shift = shift
+        
         R = self.X
-        self.displacement = displacement
-        self.shift = shift
+
         self.get_mass()
         self.m = np.ones(self.N)
         self.create_spring_constants()
         self.calculate_angle_triplets_method()
-        self.calculate_initial_angles_method(displacement)
+        self.calculate_initial_angles_method(self.displacement)
         self.k_angles = (2*self.k_angle/ ( self.degrees* (self.degrees-1) ) ) [self.angle_triplets[:,1]]  #equal distribution of angle stiffness to all triplets centred on a node 
-        self.get_surface_nodes()
-        
+       
     def auxetic_parameters(self, perturbation=1., delta_perturbation=0.1, steps=50, write_every=1):
         """
         Sets the parameters for the auxetic simulation.
@@ -108,6 +112,83 @@ class System:
         self.nr_trials = nr_trials
         self.ageing_rate = ageing_rate
         self.success_fraction = success_fraction
+
+    def create_periodic_graph(self):
+        # Initialize JAX PRNGKey
+        key = random.PRNGKey(self.random_seed)
+
+        #set number of particles
+        N = self.nr_points ** 2 
+        N_4 = N // 4
+        self.N = N
+
+
+        #set up bubble simulation
+        packing_fraction = 1.1
+        diameters = np.array([1.0, 0.87, 0.74, 0.60]) #**self.dx we could add this functionality, where dx in this case would amplify the polydispersity 
+        simulation_steps = 500
+        
+        species = np.array([0] * (N_4) + [1] * (N_4) + [2] * (N_4) + [3] * (N - 3*N_4), dtype=np.int32)
+        
+        
+        
+        # Split the key for the next random operation
+        key, subkey = random.split(key)
+        
+
+
+        box_size = np.sqrt(np.sum (np.pi * (diameters[species]**2)/4)  / packing_fraction)
+        self.box_size = box_size
+        displacement, shift = space.periodic(box_size)
+        self.displacement = displacement
+        self.shift = shift
+
+
+        diameter_matrix = np.tile(diameters, (diameters.shape[0],1)) 
+        sigma = 0.5* (diameter_matrix + diameter_matrix.T)
+
+        
+        energy_fn = energy.soft_sphere_pair(
+          displacement, species=species, sigma=sigma)
+        
+        pos_key, sim_key = random.split(key)
+        
+        initial_positions = random.uniform(pos_key, (self.N, 2), maxval=box_size)
+        
+        init_fn, apply_fn = minimize.fire_descent(energy_fn, shift)
+        state = init_fn(initial_positions)
+        
+        do_step = lambda state, t: (apply_fn(state, t=t), ())
+
+        
+        state, _ = lax.scan(do_step, state, np.arange(simulation_steps))
+
+        R = state.position
+        
+        
+        r_c = 0.5*( np.tile(diameters[species], (self.N,1)) + np.tile(diameters[species],(self.N,1)).T)
+        distances = np.linalg.norm(space.map_product(self.displacement)(R,R), axis =2)
+
+        E1=onp.array(np.where(distances<r_c))
+        E=onp.transpose(E1[:,E1[0]>E1[1]])
+        
+        G = nx.Graph()
+        G.add_nodes_from(range(self.N))
+        G.add_edges_from(E)
+        E = onp.array(G.edges)
+        L = np.linalg.norm(space.map_bond(self.displacement)(R[E[:, 0],:],R[E[:, 1],:]), axis = 1)
+        
+        if np.sum(L<0.1)>0:
+            print('soft spheres are superimposed! reduce packing fraction')
+        
+
+        self.G = G
+        self.X = R
+        self.E = E
+        self.L = L
+        self.get_mass()
+        self.degrees  = np.array([val for (node, val) in G.degree()])
+
 
     def create_delaunay_graph(self):
         # Initialize JAX PRNGKey
@@ -153,7 +234,6 @@ class System:
         A = onp.zeros((N, N))
         A[EN[:, 0], EN[:, 1]] = 1
         L = onp.linalg.norm(X_np[ET[:, 0], :] - X_np[ET[:, 1], :], axis=1)
-        EL = L[R < self.r_circle]
 
         # Create the graph object
         G = nx.Graph(A)
@@ -238,10 +318,10 @@ class System:
         Output: Updates self.spring_constants and self.distances.
         """
         if self.X is None or self.E is None:
-            raise ValueError("Graph properties not set. Call createDelaunayGraph first.")
+            raise ValueError("Graph properties not set. Call a graph creation routine first.")
 
-        displacements = self.X[self.E[:, 0], :] - self.X[self.E[:, 1], :]
-        distances = np.linalg.norm(displacements, axis=1)
+        distances = np.linalg.norm(space.map_bond(self.displacement)(self.X[self.E[:, 0],:],self.X[self.E[:, 1],:]), axis = 1)
+        
         self.spring_constants = (k_1 / distances).reshape(-1, 1)
         self.distances = distances
 
@@ -258,12 +338,12 @@ class System:
         """
         self.angle_triplets = calculate_angle_triplets(self.E)  
 
-    def calculate_initial_angles_method(self, displacement_fn):
+    def calculate_initial_angles_method(self, displacement):
         """
         Wrapper method to calculate the initial angles for each triplet of nodes.
         """
 
-        self.initial_angles = calculate_initial_angles(self.X,  self.angle_triplets, displacement_fn)
+        self.initial_angles = calculate_initial_angles(self.X,  self.angle_triplets, self.displacement)
 
 @jit
 def fitness(poisson):

@@ -29,6 +29,108 @@ Result_forbidden_modes = namedtuple('Result', [
     'poisson'
 ])
 
+
+def simulate_periodic(R,
+                     k_bond,
+                     system,
+                     shift,
+                     displacement
+                     ):
+    """
+    minimizes a periodic system using a System instance and is set to evaulate network's penalties only (spring constants and angle energy not included)
+
+    system: System instance containing the state and properties of the system
+    shift: shift parameter for the FIRE minimization
+    perturbation: total perturbation
+    delta_perturbation: perturbation step size
+    displacement: displacement function
+    steps: number of steps in the simulation
+    write_every: frequency of writing data
+    optimize: boolean to indicate whether to optimize the poisson ratio
+
+    Returns:
+    poisson: poisson ratio
+    log: log dictionary
+    R_init: initial positions
+    R_final: final positions
+    """
+    #update variables according to R so that the derivative accounts for them
+
+    num_iterations = 1
+    cumulative_perturbation = 0.0
+
+    log = {
+            'force': onp.zeros((num_iterations*(system.steps // system.write_every),) + R.shape),
+            'position': onp.zeros((num_iterations*(system.steps // system.write_every),) + R.shape)
+    }
+
+    def step_fn_generator(apply, start_idx):
+        def step_fn(i, state_and_log):
+            """
+            Minimizes the configuration at each step.
+
+            i: step number
+            state_and_log: state and log dictionary
+            """
+            fire_state, log = state_and_log
+            i_adjusted = i + start_idx
+            log['force'] = lax.cond(i_adjusted % system.write_every == 0,
+                                        lambda p: p.at[i_adjusted // system.write_every].set(fire_state.force),
+                                        lambda p: p,
+                                        log['force'])
+
+            log['position'] = lax.cond(i_adjusted % system.write_every == 0,
+                                            lambda p: p.at[i_adjusted // system.write_every].set(fire_state.position),
+                                            lambda p: p,
+                                            log['position'])
+
+            fire_state = apply(fire_state)
+            return fire_state, log
+
+        return step_fn
+
+    def perturb_and_minimize(i, state_log_perturb):
+            R_current, log, cumulative_perturbation = state_log_perturb
+            R_perturbed = R_current#.at[left_indices, 0].add(system.delta_perturbation)
+            #cumulative_perturbation += system.delta_perturbation
+            # Update the force function with the new positions
+               
+            # Reinitialize the fire state with the new positions and updated force function
+            fire_init, fire_apply = minimize.fire_descent(energy_fn_wrapper, shift, dt_max = 0.2)
+            fire_state = fire_init(R_perturbed)
+    
+            # Update step function generator with the new start index
+    
+            start_idx = i * (system.steps // system.write_every)
+    
+            step_fn = step_fn_generator(fire_apply, start_idx)
+    
+            # Perform the minimization step
+            fire_state, log = lax.fori_loop(0, system.steps, step_fn, (fire_state, log))
+            R_perturbed = fire_state.position
+    
+            return R_perturbed, log, cumulative_perturbation
+
+    def energy_fn(R, system, **kwargs):
+        angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, displacement, R))
+        # Bond energy (assuming that simple_spring_bond is JAX-compatible)
+        bond_energy = energy.simple_spring_bond(displacement, system.E, length=system.distances, epsilon=k_bond[:, 0])(R, **kwargs)
+        node_energy = energy.soft_sphere_pair(displacement, sigma = system.soft_sphere_sigma, epsilon= system.soft_sphere_epsilon)(R, **kwargs)
+
+        return bond_energy + angle_energy + node_energy
+
+    def energy_fn_wrapper(R, **kwargs):
+        return energy_fn(R, system, **kwargs)
+
+    R_init = R
+
+    R_final, log, cumulative_perturbation = lax.fori_loop(0, num_iterations, perturb_and_minimize, (R_init, log, cumulative_perturbation))
+
+    print("Energy hopefully reduced from ", energies.penalty_energy(R_init, system)," to ", energies.penalty_energy(R_final, system))
+    
+    return R_init, R_final, log
+
+
 def simulate_minimize_penalty(R,
                      k_bond,
                      system,
