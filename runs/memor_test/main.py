@@ -2,14 +2,16 @@
 import jax.numpy as np
 import numpy as onp
 from jax import random
-from jax.config import config; config.update("jax_enable_x64", True); config.update("jax_debug_nans", False)
+import jax
+jax.config.update("jax_enable_x64", True); jax.config.update("jax_debug_nans", False)
+#from jax.config import config; config.update("jax_enable_x64", True); config.update("jax_debug_nans", False)
 from jax_md import space
 from jax import random, grad
 from jax import jit, vmap
 from jax import lax
 import networkx as nx
 import sys
-sys.path.insert(0, '/scratch/midway3/bylehn/auxetic_networks_jaxmd/')  # Adds the parent directory to sys.path
+sys.path.insert(0, '/home/fabian/Documents/network/saxophone')  # Adds the parent directory to sys.path
 import saxophone.visualize as visualize
 import saxophone.utils as utils
 import saxophone.simulation as simulation
@@ -21,7 +23,8 @@ from memory_profiler import profile
 # %%
 
 
-poisson_target = onp.float64(sys.argv[1])
+#poisson_target = onp.float64(sys.argv[1])
+poisson_target = -1.0
 opt_steps = 10
 dw = 0.1
 w_c = 2.0
