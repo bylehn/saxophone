@@ -78,7 +78,7 @@ class System:
         and preparing the system for simulation.
         """
         if periodic: 
-            self.create_periodic_graph() #this function should assign the displacementand shift
+            self.create_periodic_graph() #this function should assign the displacement and shift
         else:
             displacement, shift = space.free()
             self.create_delaunay_graph()
@@ -272,12 +272,15 @@ class System:
         right_nodes = nodes[x_values == self.nr_points - 1]
 
         # Store the result in self.surface_nodes
+
+
         self.surface_nodes = {
             'top': top_nodes,
             'bottom': bottom_nodes,
             'left': left_nodes,
             'right': right_nodes
-        }
+            }
+        
     def extract_surface_bond_mask(self):
         """
         Extract a mask indicating all the bonds (edges) between the surface nodes.

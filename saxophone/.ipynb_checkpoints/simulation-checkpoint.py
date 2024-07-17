@@ -1,7 +1,7 @@
 import jax.numpy as np
 import numpy as onp
 from jax.config import config; config.update("jax_enable_x64", True)
-from jax_md import energy, minimize
+from jax_md import energy, minimize, elasticity
 from jax import jit, vmap, grad
 from jax import lax
 from jax import debug
@@ -50,62 +50,12 @@ def simulate_periodic(R,
     R_init: initial positions
     R_final: final positions
     """
-    #update variables according to R so that the derivative accounts for them
 
-    num_iterations = 1
-    cumulative_perturbation = 0.0
+    system.X = R
+    system.create_spring_constants()
+    system.calculate_initial_angles_method()
 
-    log = {
-            'force': onp.zeros((num_iterations*(system.steps // system.write_every),) + R.shape),
-            'position': onp.zeros((num_iterations*(system.steps // system.write_every),) + R.shape)
-    }
 
-    def step_fn_generator(apply, start_idx):
-        def step_fn(i, state_and_log):
-            """
-            Minimizes the configuration at each step.
-
-            i: step number
-            state_and_log: state and log dictionary
-            """
-            fire_state, log = state_and_log
-            i_adjusted = i + start_idx
-            log['force'] = lax.cond(i_adjusted % system.write_every == 0,
-                                        lambda p: p.at[i_adjusted // system.write_every].set(fire_state.force),
-                                        lambda p: p,
-                                        log['force'])
-
-            log['position'] = lax.cond(i_adjusted % system.write_every == 0,
-                                            lambda p: p.at[i_adjusted // system.write_every].set(fire_state.position),
-                                            lambda p: p,
-                                            log['position'])
-
-            fire_state = apply(fire_state)
-            return fire_state, log
-
-        return step_fn
-
-    def perturb_and_minimize(i, state_log_perturb):
-            R_current, log, cumulative_perturbation = state_log_perturb
-            R_perturbed = R_current#.at[left_indices, 0].add(system.delta_perturbation)
-            #cumulative_perturbation += system.delta_perturbation
-            # Update the force function with the new positions
-               
-            # Reinitialize the fire state with the new positions and updated force function
-            fire_init, fire_apply = minimize.fire_descent(energy_fn_wrapper, system.shift, dt_max = 0.2)
-            fire_state = fire_init(R_perturbed)
-    
-            # Update step function generator with the new start index
-    
-            start_idx = i * (system.steps // system.write_every)
-    
-            step_fn = step_fn_generator(fire_apply, start_idx)
-    
-            # Perform the minimization step
-            fire_state, log = lax.fori_loop(0, system.steps, step_fn, (fire_state, log))
-            R_perturbed = fire_state.position
-    
-            return R_perturbed, log, cumulative_perturbation
 
     def energy_fn(R, system, **kwargs):
         angle_energy = np.sum(energies.angle_energy(system, system.angle_triplets, system.displacement, R))
@@ -118,13 +68,48 @@ def simulate_periodic(R,
     def energy_fn_wrapper(R, **kwargs):
         return energy_fn(R, system, **kwargs)
 
-    R_init = R
 
-    R_final, log, cumulative_perturbation = lax.fori_loop(0, num_iterations, perturb_and_minimize, (R_init, log, cumulative_perturbation))
-
-    print("Energy hopefully reduced from ", energies.penalty_energy(R_init, system)," to ", energies.penalty_energy(R_final, system))
     
-    return R_init, R_final, log
+
+    emt_fn = elasticity.athermal_moduli(energy_fn_wrapper)#, check_convergence=True)
+    C = emt_fn(R,system.box_size)
+    
+    return elasticity.extract_isotropic_moduli(C)['nu'], emt_fn, energy_fn_wrapper
+
+
+def simulate_periodic_wrapper(system):
+    """
+    Simulates the auxetic process using a System instance.
+
+    R: position matrix  
+    k_bond: spring constant matrix
+    system: System instance containing the state and properties of the system   
+       
+
+    Returns:
+    poisson: poisson ratio
+
+    """             
+
+
+    def auxetic_objective (R,
+                           k_bond):
+        """
+        wrapped function that outputs the objective for auxeticity.
+    
+        R: position matrix  
+        k_bond: spring constant matrix
+             
+    
+        Returns:
+        poisson: poisson ratio
+    
+        """             
+        poisson,_,_ = simulate_periodic(R, k_bond, system)
+        output = poisson + energies.penalty_energy(R, system) / system.penalty_scale + utils.stiffness_penalty(system, k_bond)
+        # penalty added here because making a separate funtion and gradient could be memory loading...
+        return output
+    return auxetic_objective
 
 
 def simulate_minimize_penalty(R,
@@ -154,18 +139,20 @@ def simulate_minimize_penalty(R,
     system.create_spring_constants()
     system.calculate_initial_angles_method()
 
-    # Get the surface nodes.
-    top_indices = system.surface_nodes['top']
-    bottom_indices = system.surface_nodes['bottom']
-    left_indices = system.surface_nodes['left']
-    right_indices = system.surface_nodes['right']
+
 
     #fix all surface nodes
     mask = np.ones(R.shape)
-    mask = mask.at[left_indices].set(0)
-    mask = mask.at[right_indices].set(0)
-    mask = mask.at[top_indices].set(0)
-    mask = mask.at[bottom_indices].set(0)
+    if system.surface_mask is not None:
+        # Get the surface nodes.
+        top_indices = system.surface_nodes['top']
+        bottom_indices = system.surface_nodes['bottom']
+        left_indices = system.surface_nodes['left']
+        right_indices = system.surface_nodes['right']
+        mask = mask.at[left_indices].set(0)
+        mask = mask.at[right_indices].set(0)
+        mask = mask.at[top_indices].set(0)
+        mask = mask.at[bottom_indices].set(0)
 
     num_iterations = 1
     cumulative_perturbation = 0.0
