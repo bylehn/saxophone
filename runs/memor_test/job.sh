@@ -16,11 +16,13 @@ for ratio in "${poisson[@]}"; do
     # Submit the job
     sbatch --job-name=${dir_name} \
            --account=pi-depablo \
-           --partition=depablo \
+           --partition=depablo-gpu \
            --output=job_output_%j.txt \
+           --verbose \
            --nodes=1 \
            --tasks=1 \
-           --mem-per-cpu=16G \
+           --cpus-per-task=16 \
+           --gres=gpu:1 \
            --time=12:00:00 \
            --wrap="python ../main.py ${ratio}"
     

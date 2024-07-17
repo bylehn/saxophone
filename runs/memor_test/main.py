@@ -23,9 +23,8 @@ from memory_profiler import profile
 # %%
 
 
-#poisson_target = onp.float64(sys.argv[1])
-poisson_target = -1.0
-opt_steps = 10
+poisson_target = onp.float64(sys.argv[1])
+opt_steps = 200
 dw = 0.1
 w_c = 2.0
 k_angle = 0.01

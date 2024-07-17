@@ -12,4 +12,5 @@
 *.eot
 *.ttf
 /.ipynb_checkpoints/
+/runs/
 

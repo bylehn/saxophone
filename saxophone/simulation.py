@@ -143,7 +143,7 @@ def simulate_minimize_penalty(R,
 
     R_final, log, cumulative_perturbation = lax.fori_loop(0, num_iterations, perturb_and_minimize, (R_init, log, cumulative_perturbation))
 
-    print("Energy reduced from ", energies.penalty_energy(R_init, system)," to ", energies.penalty_energy(R_final, system))
+    print("Energy hopefully reduced from ", energies.penalty_energy(R_init, system)," to ", energies.penalty_energy(R_final, system))
     
     return R_init, R_final, log
 
@@ -186,7 +186,7 @@ def simulate_auxetic(R,
     mask = np.ones(R.shape)
     mask = mask.at[left_indices].set(0)
     mask = mask.at[right_indices].set(0)
-    num_iterations = int(onp.ceil(system.perturbation / system.delta_perturbation))
+    num_iterations = onp.abs(int(onp.ceil(system.perturbation / system.delta_perturbation)))
     # Initialize the cumulative perturbation
     cumulative_perturbation = 0.0
 
@@ -312,7 +312,8 @@ def simulate_auxetic_wrapper(R,
     
         """             
         poisson, log, R_init , R_final = simulate_auxetic(R, k_bond, system, shift, displacement)
-        output = poisson + energies.penalty_energy(R_init, system) / system.penalty_scale # penalty added here because making a separate funtion and gradient could be memory loading...
+        output = poisson + energies.penalty_energy(R_init, system) / system.penalty_scale + utils.stiffness_penalty(system, k_bond)
+        # penalty added here because making a separate funtion and gradient could be memory loading...
         return output
     return simulate_auxetic_optimize
 
@@ -609,19 +610,24 @@ def acoustic_compression_wrapper(system, shift, displacement, k_fit):
         
         #return result.forbidden_states_init, result.forbidden_states_final
        
-        return objective_function +  energies.penalty_energy(result.R_init, system) / system.penalty_scale # penalty 
+        return objective_function +  energies.penalty_energy(result.R_init, system) / system.penalty_scale + utils.stiffness_penalty(system, k_bond)
+        # penalty 
     return acoustic_compression_grad
 
 
-def acoustic_auxetic_maintainer_wrapper(system, shift, displacement, k_fit, poisson_factor, poisson_init):
-    def acoustic_auxetic_maintainer(R, k_bond):
+def acoustic_auxetic_adaptive_wrapper(system, shift, displacement, k_fit, bandgap_bias, poisson_target, poisson_bias):
+    def acoustic_auxetic_adaptive(R, k_bond):
         """
-        objective function is for creating a bandgap while maintaining input poisson ratio
+        objective function that adapts the objective function to the state of optimization
+        poisson bias: distance of the original poisson before optimization to the target, used to scale poisson_distance
+        bandgap bias: used to define the radius of the bandgap distance. essentially we want the optimized (fit_init,fit_final) = (bandgap_bias, 0)
         """
         def gap_objective(frequency, frequency_center, k_fit):
             
             return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
+
         
+
 
 
         result = forbidden_states_compression(R, k_bond, system, shift, displacement)
@@ -632,11 +638,14 @@ def acoustic_auxetic_maintainer_wrapper(system, shift, displacement, k_fit, pois
         fit_final = gap_objective(result.frequency_final, system.frequency_center, k_fit)
 
         # Weighted objective function: Heavily weight the final state's energy
-        objective_function = fit_final -fit_init + poisson_factor*(result.poisson-poisson_init)**2
+
+        poisson_distance = (result.poisson - poisson_target) / poisson_bias
+        bandgap_distance =  (fit_final/bandgap_bias)**2 + (1- (fit_init/bandgap_bias))**2  # eucleadian distance in reduced fitness space of the current fitness as the ideal fitness of fit_final = 0 and fit_initial = bandgap_bias. This usually starts at 1, although can go above
+        objective_function = bandgap_distance + poisson_distance**2 #squared to maintain positivity :)
         
         #return result.forbidden_states_init, result.forbidden_states_final
-        return objective_function
-    return acoustic_auxetic_maintainer
+        return objective_function  +  energies.penalty_energy(result.R_init, system) / system.penalty_scale + utils.stiffness_penalty(system, k_bond) # penalty 
+    return acoustic_auxetic_adaptive
 
 
 def acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed, width_closed, frequency_opened, width_opened):  
@@ -676,7 +685,7 @@ def acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed
         objective_function = objective_init + objective_final #Note how we add in this case since different objectives are being achieved
         
  
-        return objective_function +  energies.penalty_energy(result.R_init, system) / system.penalty_scale # penalty 
+        return objective_function +  energies.penalty_energy(result.R_init, system) / system.penalty_scale + utils.stiffness_penalty(system, k_bond)# penalty 
     return acoustic_bandgap_shift
 
 
@@ -761,19 +770,13 @@ def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c,
         gradient_max = np.max( np.abs( np.vstack((gradients_k, 
                                                   gradients_R.ravel()[:, np.newaxis] ))))
     
-        #check if k_temp has exceeded a threshold
-        if np.max(k_temp)>10:
-            print('max k_temp',np.max(k_temp))
-            exit_flag = 2
-            break
-    
         
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
         R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp, 0.01)
     
         bandgap_contrast = acoustic_compression_wrapper(system, shift, displacement, k_fit)(R_temp, k_temp)
         
-        print(i, gradient_max, bandgap_contrast - energies.penalty_energy(R_temp, system)/system.penalty_scale, energies.penalty_energy(R_temp, system) )
+        print(i, gradient_max, bandgap_contrast - energies.penalty_energy(R_temp, system)/system.penalty_scale, energies.penalty_energy(R_temp, system) , utils.stiffness_penalty(system, k_temp))
         
         #set evolution bits for the network
         if output_evolution:
@@ -871,11 +874,6 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
         prev_gradient_max = gradient_max
     
 
-        
-        #check if k_temp has exceeded a threshold
-        if np.max(k_temp)>10:
-            exit_flag = 2
-            break
 
         #update k and R
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
@@ -888,7 +886,7 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
                                                         shift,
                                                         displacement)
         
-        print(i, gradient_max,  poisson, energies.penalty_energy(R_init, system) )
+        print(i, gradient_max,  poisson, energies.penalty_energy(R_init, system), utils.stiffness_penalty(system, k_temp))
 
 
         if output_evolution:
@@ -905,9 +903,14 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
         return poisson, exit_flag, R_temp, k_temp, system, shift, displacement
 
 #@profile
+
+
 def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, poisson_target, opt_steps, output_evolution = False):
 
     """
+    a combination version that uses a wrapper that implicitly combines scaled objectives
+
+    
     run: run id, also used to as random seed
     poisson_target: the aimed value for the poisson ratio
     perturbation: absolute value of perturbation of the network for compression
@@ -974,67 +977,31 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
     
     poisson = result.poisson
     poisson_bias = np.abs(poisson-poisson_target)  # distance bias - slower distance decline for larger difference.
+
     forbidden_states_init = result.forbidden_states_init
     forbidden_states_final = result.forbidden_states_final
+    bandgap_bias = utils.gap_objective(result.frequency_init, system.frequency_center, k_fit) #this is used to define the radius of the fitness function.
+    
+    print('initial forbidden states: ', forbidden_states_init, bandgap_bias ) 
+    
+    # combination adaptive function
+    adaptive_function = acoustic_auxetic_adaptive_wrapper(system, shift, displacement, k_fit, bandgap_bias, poisson_target, poisson_bias)
+    
+    grad_adaptive_R = jit(grad(adaptive_function, argnums=0))
+    grad_adaptive_k = jit(grad(adaptive_function, argnums=1))
 
- 
-    
-    poisson_distance = (poisson - poisson_target) / poisson_bias
-    bandgap_distance = forbidden_states_final/forbidden_states_init
-    
-    
-    print('initial forbidden states: ', forbidden_states_init) 
-    
-    # acoustic functions
-    acoustic_function = acoustic_compression_wrapper(system, shift, displacement, k_fit)
-    
-    grad_acoustic_R = jit(grad(acoustic_function, argnums=0))
-    grad_acoustic_k = jit(grad(acoustic_function, argnums=1))
-    
-    #auxetic_functions
-    
-    auxetic_function = simulate_auxetic_wrapper(R, k_bond, system,shift,displacement)
-    
-    grad_auxetic_R = jit(grad(auxetic_function, argnums=0))
-    grad_auxetic_k = jit(grad(auxetic_function, argnums=1))
-    print("Step", "max_grad", "bandgap_distance", "poisson_distance",  "forbidden_states_init" , "forbidden_states_init" , "poisson", "energy_penalty")
+    print("Step", "max_grad", "bandgap_distance", "poisson_distance",  "forbidden_states_init" , "forbidden_states_init" , "poisson", "energy_penalty", "stiffness penalty")
     
 
     for i in range(opt_steps):
     
-        #acoustic gradients
-        gradients_acoustic_k = grad_acoustic_k(R_temp, k_temp)
-        gradients_acoustic_R = grad_acoustic_R(R_temp, k_temp)
-    
-        #auxetic gradients
-        gradients_auxetic_k = grad_auxetic_k(R_temp, k_temp)
-        gradients_auxetic_R = grad_auxetic_R(R_temp, k_temp)        
-        
-        #evaluate maximum gradients for diagnostics, with the new algorithm minimizing initial energy things shouldn't explode, hopefully. 
-        gradient_max = np.max( np.abs( np.vstack((gradients_auxetic_k, 
-                                                  gradients_auxetic_R.ravel()[:, np.newaxis], 
-                                                  gradients_acoustic_k, 
-                                                  gradients_acoustic_R.ravel()[:, np.newaxis] ))))
-    
-    
-        
-        #check if k_temp has exceeded a threshold
-        if np.max(k_temp)>10:
-            print('max k_temp',np.max(k_temp))
-            exit_flag = 2
-            break
-    
+        gradients_R = grad_adaptive_R(R_temp, k_temp)
+        gradients_k = grad_adaptive_k(R_temp, k_temp)
 
-        #normalize gradients 
-        gradients_auxetic_k = utils.normalize_gradients(gradients_auxetic_k)
-        gradients_auxetic_R = utils.normalize_gradients(gradients_auxetic_R)
-        
-        gradients_acoustic_k = utils.normalize_gradients(gradients_acoustic_k)
-        gradients_acoustic_R = utils.normalize_gradients(gradients_acoustic_R)
+        gradient_max = np.max( np.abs( np.vstack((gradients_k, 
+                                                  gradients_R.ravel()[:, np.newaxis] ))))
     
-        #calculate weighted
-        gradients_k = poisson_distance*gradients_auxetic_k + bandgap_distance*gradients_acoustic_k
-        gradients_R = poisson_distance*gradients_auxetic_R + bandgap_distance*gradients_acoustic_R
+    
         
         
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
@@ -1048,17 +1015,24 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
         forbidden_states_final = result.forbidden_states_final
     
         #update distances
-        poisson_distance = (poisson - poisson_target) / poisson_bias
-        bandgap_distance = forbidden_states_final / forbidden_states_init
+        fit_init = utils.gap_objective(result.frequency_init, system.frequency_center, k_fit)
+
+        # Fitness energy for the final state
+        fit_final = utils.gap_objective(result.frequency_final, system.frequency_center, k_fit)
+
+        # Weighted objective function: Heavily weight the final state's energy
+
+        poisson_distance = (result.poisson - poisson_target) / poisson_bias
+        bandgap_distance =  (fit_final/bandgap_bias)**2 + (1- (fit_init) /bandgap_bias)**2 
     
         
-        if np.abs(poisson_distance) < 0.02 and bandgap_distance < 0.05: 
+        if np.abs(poisson_distance) < 0.02 and bandgap_distance < 0.05 : 
             print('converged')
             exit_flag = 3
             break
     
         
-        print(i, gradient_max, bandgap_distance, poisson_distance, forbidden_states_init, forbidden_states_final, poisson, energies.penalty_energy(R_temp, system))
+        print(i, gradient_max, bandgap_distance, poisson_distance, forbidden_states_init, forbidden_states_final, poisson, energies.penalty_energy(R_temp, system), utils.stiffness_penalty(system, k_temp))
         
         if output_evolution: 
             #set evolution bits for the network
@@ -1083,6 +1057,7 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
         return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result, evolution_log
     else:
         return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result
+
 
 def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, perturbation, frequency_closed, width_closed, frequency_opened, width_opened, poisson_target, opt_steps, output_evolution = False):
 
@@ -1174,7 +1149,7 @@ def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, pert
     print(" Contrasts:   Closed,   Opened" )
     print('initial : ', utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed), utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)) 
     print('final   : ', utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed),  utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened))
-    print("Step", "max_grad", "bandgap_distance", "poisson_distance",  "closed_contrast_ratio" , "opened_contrast_ratio" , "poisson", "energy_penalty")
+    print("Step", "max_grad", "bandgap_distance", "poisson_distance",  "closed_contrast_ratio" , "opened_contrast_ratio" , "poisson", "energy_penalty", "stiffness penalty")
     # acoustic functions
     acoustic_function = acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed, width_closed, frequency_opened, width_opened)
     
@@ -1204,13 +1179,6 @@ def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, pert
                                                   gradients_acoustic_k, 
                                                   gradients_acoustic_R.ravel()[:, np.newaxis] ))))
 
-        
-        #check if k_temp has exceeded a threshold
-        if np.max(k_temp)>10:
-            print('max k_temp',np.max(k_temp))
-            exit_flag = 2
-            break
-    
     
         #normalize gradients 
         gradients_auxetic_k = utils.normalize_gradients(gradients_auxetic_k)
@@ -1247,7 +1215,7 @@ def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, pert
             break
     
         
-        print(i, gradient_max, bandgap_distance, poisson_distance,  closed_contrast_ratio, opened_contrast_ratio, poisson, energies.penalty_energy(R_temp, system))
+        print(i, gradient_max, bandgap_distance, poisson_distance,  closed_contrast_ratio, opened_contrast_ratio, poisson, energies.penalty_energy(R_temp, system), utils.stiffness_penalty(system, k_temp))
 
         if output_evolution:
             #set evolution bits for the network

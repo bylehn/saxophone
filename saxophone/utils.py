@@ -27,10 +27,13 @@ class System:
         self.soft_sphere_epsilon = 2.0 
 
         #crossing penalty attributes
-        self.crossing_penalty_strength = 2.0 # epsilon of soft angle strength
         self.crossing_penalty_threshold = 0.3 #radians
-
+        self.crossing_penalty_strength = 2.0 # epsilon of soft angle strength
+        
         self.penalty_scale = 1e-5 #per node penalty energy that scales to 1 unit in objective functions
+
+        self.k_std_threshold = 1.0
+        self.k_std_strength = 2.0
        
         
         # Initialize attributes
@@ -284,6 +287,31 @@ def poisson_ratio(initial_horizontal, initial_vertical, final_horizontal, final_
 
     return -delta_vertical / delta_horizontal
 
+def poisson_from_config(system, R_init, R_final):
+    top_indices = system.surface_nodes['top']
+    bottom_indices = system.surface_nodes['bottom']
+    left_indices = system.surface_nodes['left']
+    right_indices = system.surface_nodes['right']
+    # Initial dimensions (before deformation)
+    # Exclude the first and last index for horizontal edges (top and bottom)
+    # as these are corners with the left and right edges
+    initial_horizontal = onp.mean(R_init[right_indices[1:-1]], axis=0)[0] - onp.mean(R_init[left_indices[1:-1]], axis=0)[0]
+
+    # Exclude the first and last index for vertical edges (left and right)
+    # as these are corners with the top and bottom edges
+    initial_vertical = onp.mean(R_init[top_indices[1:-1]], axis=0)[1] - onp.mean(R_init[bottom_indices[1:-1]], axis=0)[1]
+
+    # Final dimensions (after deformation)
+    final_horizontal = onp.mean(R_final[right_indices[1:-1]], axis=0)[0] - onp.mean(R_final[left_indices[1:-1]], axis=0)[0]
+    final_vertical = onp.mean(R_final[top_indices[1:-1]], axis=0)[1] - onp.mean(R_final[bottom_indices[1:-1]], axis=0)[1]
+
+
+    delta_horizontal = final_horizontal - initial_horizontal
+    delta_vertical = final_vertical - initial_vertical
+    # Calculate the poisson ratio.
+    return [-delta_vertical / delta_horizontal , delta_horizontal, delta_vertical]
+
+
 @jit
 def update_kbonds(gradients, k_bond, learning_rate = 0.1, min_k = 0.05):
     """
@@ -396,5 +424,8 @@ def gap_objective(frequency, frequency_center, k_fit):
 
 def normalize_gradients(gradients):
     return gradients / np.max(np.linalg.norm(gradients,axis=1))
-
+    
+def stiffness_penalty(system, k_bond):
+    k_std_normalized = np.std(k_bond*system.distances.reshape(-1,1)) / system.k_std_threshold
+    return system.k_std_strength / (1.0+ np.exp( - 50.0*( k_std_normalized - 1.0 ) ) )
 
