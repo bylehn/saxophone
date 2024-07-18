@@ -3,7 +3,7 @@ import jax.numpy as np
 import numpy as onp
 import networkx as nx
 from scipy.spatial import Delaunay
-from jax import vmap
+from jax import vmap, lax
 from jax import jit
 from jax import random  
 from jax_md import quantity, space
@@ -16,250 +16,100 @@ class System:
         self.random_seed = random_seed
         self.r_circle = r_circle
         self.dx = dx
-        self.k_angle = k_angle
+        self.k_angles = k_angle
 
-
-        #penalty parameters: node and bond crossing: 
-        
-        #node energy attrbutes 
-        self.soft_sphere_sigma = 0.3 #diameter
-        self.soft_sphere_epsilon = 2.0 
-
-        #crossing penalty attributes
-        self.crossing_penalty_threshold = 0.3 #radians
-        self.crossing_penalty_strength = 2.0 # epsilon of soft angle strength
-        
-        self.penalty_scale = 1e-5 #per node penalty energy that scales to 1 unit in objective functions
-
+        # Other parameters...
+        self.soft_sphere_sigma = 0.3
+        self.soft_sphere_epsilon = 2.0
+        self.crossing_penalty_threshold = 0.3
+        self.crossing_penalty_strength = 2.0
+        self.penalty_scale = 1e-5
         self.k_std_threshold = 1.0
         self.k_std_strength = 2.0
-       
         
-        # Initialize attributes
-        self.N = None
-        self.G = None
-        self.X = None
-        self.E = None
-        self.L = None
-        self.surface_nodes = None  
-        self.surface_mask = None
-        self.surface_bond_mask = None
-        self.mass = None
-        self.spring_constants = None
-        self.distances = None
-        self.angle_triplets = None
-        self.initial_angles = None
-        self.displacement = None
-        self.shift = None
-        # Acoustic properties
-        self.m = None
-        self.frequency_center = None
-        self.frequency_width = None
+        # Initialize parameters
+        self.initialize_parameters()
+
+    def initialize_parameters(self):
         self.ageing_rate = 0.01
         self.success_fraction = 0.05
-        self.nr_trials = None
-        self.degrees = None
-        # Auxetic properties
         self.perturbation = 1.
         self.delta_perturbation = 0.1
         self.steps = 50
         self.write_every = 1
+        
+        # Initialize JAX-specific attributes
+        self.displacement, self.shift = space.free()
 
-
-# %%
-
-    def initialize(self):
-        """
-        Initializes the system by setting up the graph, calculating necessary properties,
-        and preparing the system for simulation.
-        """
-        self.create_delaunay_graph()
-        R = self.X
-        displacement, shift = space.free()
-        self.displacement = displacement
-        self.shift = shift
+    def initialize_graph(self, X, E, L, surface_mask, degrees):
+        self.X = X
+        self.E = E
+        self.L = L
+        self.surface_mask = surface_mask
+        self.N = X.shape[0]
+        self.degrees = degrees
+        self.get_surface_nodes()
+        self.extract_surface_bond_mask()
         self.get_mass()
-        self.m = np.ones(self.N)
         self.create_spring_constants()
         self.calculate_angle_triplets_method()
-        self.calculate_initial_angles_method(displacement)
-        self.k_angles = (2*self.k_angle/ ( self.degrees* (self.degrees-1) ) ) [self.angle_triplets[:,1]]  #equal distribution of angle stiffness to all triplets centred on a node 
-        self.get_surface_nodes()
+        self.calculate_initial_angles_method(self.displacement)
+
+    def get_surface_nodes(self):
+        nodes = onp.arange(self.N)
+        x_values = nodes % self.nr_points
+        y_values = nodes // self.nr_points
+
+        self.surface_nodes = {
+            'top': nodes[y_values == (self.nr_points - 1)],
+            'bottom': nodes[y_values == 0],
+            'left': nodes[x_values == 0],
+            'right': nodes[x_values == (self.nr_points - 1)]
+        }
+
+        # Create a boolean mask for all surface nodes
+        self.surface_mask = onp.zeros(self.N, dtype=bool)
+        for nodes in self.surface_nodes.values():
+            self.surface_mask[nodes] = True
+
+    def extract_surface_bond_mask(self):
+        def is_surface_edge(edge):
+            return self.surface_mask[edge[0]] and self.surface_mask[edge[1]]
         
-    def auxetic_parameters(self, perturbation=1., delta_perturbation=0.1, steps=50, write_every=1):
-        """
-        Sets the parameters for the auxetic simulation.
-        """
-        self.perturbation = perturbation
-        self.delta_perturbation = delta_perturbation
-        self.steps = steps
-        self.write_every = write_every
+        self.surface_bond_mask = onp.array([is_surface_edge(edge) for edge in self.E])
+    def calculate_angle_triplets_method(self):
+        self.angle_triplets = calculate_angle_triplets(self.E)
+
+    def get_mass(self):
+        m = np.ones(self.N)
+        m2 = np.zeros(2 * self.N)
+        m2 = m2.at[0:2*self.N:2].set(m)
+        m2 = m2.at[1:2*self.N:2].set(m)
+        self.mass = np.diag(m2)
+
+    def create_spring_constants(self, k_1=1.0):
+        displacements = self.X[self.E[:, 0], :] - self.X[self.E[:, 1], :]
+        distances = np.linalg.norm(displacements, axis=1)
+        self.spring_constants = (k_1 / distances).reshape(-1, 1)
+        self.distances = distances
+
+
+    def calculate_initial_angles_method(self, displacement_fn):
+        from saxophone import utils  # Assuming calculate_initial_angles is defined in utils
+        self.initial_angles = utils.calculate_initial_angles(self.X, self.angle_triplets, displacement_fn)
 
     def acoustic_parameters(self, frequency_center, frequency_width, nr_trials, ageing_rate=0.01, success_fraction=0.05):
-        """
-        Sets the parameters for the acoustic simulation.
-        """
         self.frequency_center = frequency_center
         self.frequency_width = frequency_width
         self.nr_trials = nr_trials
         self.ageing_rate = ageing_rate
         self.success_fraction = success_fraction
 
-    def create_delaunay_graph(self):
-        # Initialize JAX PRNGKey
-        key = random.PRNGKey(self.random_seed)
-
-        # Generate the points
-        xm, ym = np.meshgrid(np.arange(1, self.nr_points + 1), np.arange(1, self.nr_points + 1))
-        X = np.vstack((xm.flatten(), ym.flatten())).T
-        N = X.shape[0]
-
-        # Determine surface nodes
-        surface_mask = onp.logical_or.reduce([
-            X[:, 1] == self.nr_points,
-            X[:, 1] == 1,
-            X[:, 0] == self.nr_points,
-            X[:, 0] == 1
-        ])
-    
-        # Split the key for the next random operation
-        key, subkey = random.split(key)
-    
-        # Add noise to the non-surface points
-        noise = self.dx * 2 * (0.5 - random.uniform(subkey, (N, 2)))
-        
-        # Convert to numpy array for Delaunay triangulation
-        X_np = onp.array(X, dtype = np.float64)
-
-        X_np[~surface_mask] += noise[~surface_mask]
-
-        # Create the Delaunay triangulation
-        DT = Delaunay(X_np)
-
-        # Process the edges
-        ET = onp.empty((0, 2), dtype=int)
-        for T in DT.simplices:
-            ET = onp.vstack((ET, [T[0], T[1]], [T[1], T[2]], [T[0], T[2]]))
-
-        ET = onp.sort(ET)
-
-        # Calculate edge radii and lengths
-        R = onp.linalg.norm(X_np[ET[:, 0], :] - X_np[ET[:, 1], :], axis=1)
-        EN = ET[R < self.r_circle, :]
-        A = onp.zeros((N, N))
-        A[EN[:, 0], EN[:, 1]] = 1
-        L = onp.linalg.norm(X_np[ET[:, 0], :] - X_np[ET[:, 1], :], axis=1)
-        EL = L[R < self.r_circle]
-
-        # Create the graph object
-        G = nx.Graph(A)
-        E = onp.array(G.edges)
-        L = onp.linalg.norm(X_np[E[:, 0], :] - X_np[E[:, 1], :], axis=1)
-
-        # Store results as attributes
-        self.N = N
-        self.G = G
-        self.X = X_np
-        self.E = E
-        self.L = L
-        self.surface_mask = surface_mask
-        self.get_surface_nodes()
-        self.extract_surface_bond_mask()
-        self.get_mass()
-        self.degrees  = np.array([val for (node, val) in G.degree()])
-        
-    def get_surface_nodes(self):
-        """
-        Get the nodes on each surface of the graph and store them in self.surface_nodes.
-
-        Output: Updates self.surface_nodes with a dictionary containing surface nodes.
-        """
-        if self.G is None:
-            raise ValueError("Graph not created. Call createDelaunayGraph first.")
-
-        nodes = onp.array(list(self.G.nodes))
-        x_values = nodes % self.nr_points
-        y_values = nodes // self.nr_points
-
-        top_nodes = nodes[y_values == self.nr_points - 1]
-        bottom_nodes = nodes[y_values == 0]
-        left_nodes = nodes[x_values == 0]
-        right_nodes = nodes[x_values == self.nr_points - 1]
-
-        # Store the result in self.surface_nodes
-        self.surface_nodes = {
-            'top': top_nodes,
-            'bottom': bottom_nodes,
-            'left': left_nodes,
-            'right': right_nodes
-        }
-    def extract_surface_bond_mask(self):
-        """
-        Extract a mask indicating all the bonds (edges) between the surface nodes.
-        """
-        # Ensure surface nodes are calculated
-        if not hasattr(self, 'surface_nodes'):
-            self.get_surface_nodes()
-    
-        # Combine all surface nodes into a single set
-        surface_nodes_set = set()
-        for key in self.surface_nodes:
-            surface_nodes_set.update(self.surface_nodes[key])
-    
-        # Create a boolean mask for edges between surface nodes
-        self.surface_bond_mask = np.array([edge[0] in surface_nodes_set and edge[1] in surface_nodes_set for edge in self.E])
-    
-        
-
-    def get_mass(self):
-        """
-        Calculate the mass matrix and store it in self.M.
-        """
-        if self.G is None or self.N is None:
-            raise ValueError("Graph not created. Call createDelaunayGraph first.")
-
-        m = onp.ones(self.N)
-        mdict = dict(zip(range(self.N), m))
-        nx.set_node_attributes(self.G, mdict, 'Mass')
-
-        m2 = onp.zeros(2 * self.N)
-        m2[0:2 * self.N:2] = m
-        m2[1:2 * self.N:2] = m
-        self.mass = onp.diag(m2)
-
-    def create_spring_constants(self, k_1=1.0):
-        """
-        Creates spring constants for each edge in the graph based on current state.
-
-        Output: Updates self.spring_constants and self.distances.
-        """
-        if self.X is None or self.E is None:
-            raise ValueError("Graph properties not set. Call createDelaunayGraph first.")
-
-        displacements = self.X[self.E[:, 0], :] - self.X[self.E[:, 1], :]
-        distances = np.linalg.norm(displacements, axis=1)
-        self.spring_constants = (k_1 / distances).reshape(-1, 1)
-        self.distances = distances
-
-    @jit
-    def compute_distance(point1, point2):
-        """
-        Calculate the Euclidean distance between two points.
-        """
-        return np.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
-    
-    def calculate_angle_triplets_method(self):
-        """
-        Wrapper method to calculate the triplets of nodes that form angles.
-        """
-        self.angle_triplets = calculate_angle_triplets(self.E)  
-
-    def calculate_initial_angles_method(self, displacement_fn):
-        """
-        Wrapper method to calculate the initial angles for each triplet of nodes.
-        """
-
-        self.initial_angles = calculate_initial_angles(self.X,  self.angle_triplets, displacement_fn)
+    def auxetic_parameters(self, perturbation, delta_perturbation, steps, write_every):
+        self.perturbation = perturbation
+        self.delta_perturbation = delta_perturbation
+        self.steps = steps
+        self.write_every = write_every
 
 @jit
 def fitness(poisson):
@@ -350,26 +200,17 @@ def remove_zero_rows(log_dict):
 
 
 def calculate_angle_triplets(E):
-    """
-    Calculates the triplets of nodes that form angles.
-
-    Note: this considers ALL angles at a node, not just the planar subset. This is consistent with NOMM paper.
-
-    E: edge matrix
-
-    output: triplets of nodes that form angles
-    """
     I, J = onp.triu_indices(E.shape[0], k=1)
     mask1 = E[I, 0] == E[J, 0]
-    ai1 = np.stack([E[I[mask1], 1], E[I[mask1], 0], E[J[mask1], 1]], axis=-1)
+    ai1 = onp.stack([E[I[mask1], 1], E[I[mask1], 0], E[J[mask1], 1]], axis=-1)
     mask2 = E[I, 0] == E[J, 1]
-    ai2 = np.stack([E[I[mask2], 1], E[I[mask2], 0], E[J[mask2], 0]], axis=-1)
+    ai2 = onp.stack([E[I[mask2], 1], E[I[mask2], 0], E[J[mask2], 0]], axis=-1)
     mask3 = E[I, 1] == E[J, 0]
-    ai3 = np.stack([E[I[mask3], 0], E[I[mask3], 1], E[J[mask3], 1]], axis=-1)
+    ai3 = onp.stack([E[I[mask3], 0], E[I[mask3], 1], E[J[mask3], 1]], axis=-1)
     mask4 = E[I, 1] == E[J, 1]
-    ai4 = np.stack([E[I[mask4], 0], E[I[mask4], 1], E[J[mask4], 0]], axis=-1)
+    ai4 = onp.stack([E[I[mask4], 0], E[I[mask4], 1], E[J[mask4], 0]], axis=-1)
 
-    return np.concatenate([ai1, ai2, ai3, ai4], axis=0)
+    return onp.concatenate([ai1, ai2, ai3, ai4], axis=0)
 
 
 def compute_angle_between_triplet(displacement_fn, pi, pj, pk):
@@ -418,13 +259,60 @@ def is_hermitian(matrix):
     return np.allclose(matrix, conjugate_transpose)
 
 def gap_objective(frequency, frequency_center, k_fit):
+    # Add a small epsilon to avoid division by zero
+    epsilon = 1e-10
     
-    return np.sum(np.exp(-0.5*k_fit * (frequency - frequency_center)**2))
+    # Clip the input to avoid extremely large values
+    frequency = np.clip(frequency, -1e6, 1e6)
+    
+    result = np.sum(np.exp(-0.5 * k_fit * (frequency - frequency_center)**2))
+    
+    # If the result is zero, return a small positive value instead
+    return np.maximum(result, epsilon)
+
+def stiffness_penalty(system, k_bond):
+    k_std_normalized = np.std(k_bond*system.distances.reshape(-1,1)) / system.k_std_threshold
+    return system.k_std_strength / (1.0 + np.exp(-50.0 * (k_std_normalized - 1.0)))
 
 def normalize_gradients(gradients):
     return gradients / np.max(np.linalg.norm(gradients,axis=1))
     
-def stiffness_penalty(system, k_bond):
-    k_std_normalized = np.std(k_bond*system.distances.reshape(-1,1)) / system.k_std_threshold
-    return system.k_std_strength / (1.0+ np.exp( - 50.0*( k_std_normalized - 1.0 ) ) )
 
+def create_delaunay_graph(system):
+    key = random.PRNGKey(system.random_seed)
+
+    xm, ym = onp.meshgrid(onp.arange(1, system.nr_points + 1), onp.arange(1, system.nr_points + 1))
+    X = onp.vstack((xm.flatten(), ym.flatten())).T
+    N = X.shape[0]
+
+    surface_mask = onp.logical_or.reduce([
+        X[:, 1] == system.nr_points,
+        X[:, 1] == 1,
+        X[:, 0] == system.nr_points,
+        X[:, 0] == 1
+    ])
+
+    key, subkey = random.split(key)
+    noise = system.dx * 2 * (0.5 - random.uniform(subkey, (N, 2)))
+    X_np = onp.array(X, dtype=onp.float64)
+    X_np[~surface_mask] += onp.array(noise[~surface_mask])
+
+    DT = Delaunay(X_np)
+
+    ET = onp.empty((0, 2), dtype=int)
+    for T in DT.simplices:
+        ET = onp.vstack((ET, [T[0], T[1]], [T[1], T[2]], [T[0], T[2]]))
+
+    ET = onp.sort(ET)
+    R = onp.linalg.norm(X_np[ET[:, 0], :] - X_np[ET[:, 1], :], axis=1)
+    EN = ET[R < system.r_circle, :]
+    A = onp.zeros((N, N))
+    A[EN[:, 0], EN[:, 1]] = 1
+    L = onp.linalg.norm(X_np[ET[:, 0], :] - X_np[ET[:, 1], :], axis=1)
+    EL = L[R < system.r_circle]
+
+    G = nx.Graph(A)
+    E = onp.array(G.edges)
+    L = onp.linalg.norm(X_np[E[:, 0], :] - X_np[E[:, 1], :], axis=1)
+
+    return G, X_np, E, L, surface_mask

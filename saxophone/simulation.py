@@ -10,6 +10,7 @@ import saxophone.utils as utils
 import saxophone.energies as energies
 from collections import namedtuple
 from memory_profiler import profile
+from functools import partial
 import gc
 
 Result_forbidden_modes = namedtuple('Result', [
@@ -339,25 +340,24 @@ def get_bond_importance(C, V, D, D_range):
 
 def create_compatibility(system, R):
     N_b = system.E.shape[0]
-    #mdict = dict(zip(range(system.N), system.m))
-    #nx.set_node_attributes(system.G, mdict, 'Mass')
-
-    # Initialize C with zeros
     C = np.zeros((2 * system.N, N_b))
     
-    # Compute the b_vec for each edge
     b_vec = R[system.E[:, 0], :] - R[system.E[:, 1], :]
     b_vec_norm = np.linalg.norm(b_vec, axis=1, keepdims=True)
     b_vec_normalized = b_vec / b_vec_norm
 
-    # Ensure that b_vec_normalized is correctly reshaped for broadcasting
-    b_vec_normalized = b_vec_normalized.reshape(-1, 2)
+    def update_C(i, C):
+        start_idx = 2 * system.E[i, 0]
+        update = b_vec_normalized[i]
+        C = lax.dynamic_update_slice(C, update.reshape(1, 2), (start_idx, i))
+        
+        start_idx = 2 * system.E[i, 1]
+        update = -b_vec_normalized[i]
+        C = lax.dynamic_update_slice(C, update.reshape(1, 2), (start_idx, i))
+        return C
 
-    # Update C using the .at property for advanced indexing
-    for i in range(N_b):
-        C = C.at[2 * system.E[i, 0]:2 * system.E[i, 0] + 2, i].add(b_vec_normalized[i])
-        C = C.at[2 * system.E[i, 1]:2 * system.E[i, 1] + 2, i].add(-b_vec_normalized[i])
-
+    C = lax.fori_loop(0, N_b, update_C, C)
+    
     return C
 
 def get_forbidden_states(C, k_bond, system):
@@ -521,8 +521,8 @@ def forbidden_states_compression(R,
                                                )
 
     C_init = create_compatibility(system, R_init)
-
     C_final = create_compatibility(system, R_final)
+    
     D_init, V_init, forbidden_states_init, frequency_init = get_forbidden_states(C_init, k_bond, system)
     D_final, V_final, forbidden_states_final, frequency_final = get_forbidden_states(C_final, k_bond, system)
 
@@ -904,6 +904,149 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
     else: 
         return poisson, exit_flag, R_temp, k_temp, system, shift, displacement
 
+def generate_auxetic_acoustic_adaptive_memory(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, poisson_target, opt_steps, output_evolution=False, graph_data=None):
+    if graph_data is None:
+        raise ValueError("graph_data must be provided")
+
+    # Parameters
+    steps = 50
+    write_every = 1
+    delta_perturbation = 0.1
+    nr_trials = 500
+    ageing_rate = 0.1
+    success_frac = 0.05
+    k_fit = 2.0 / (dw**2)
+    
+    system = utils.System(number_of_nodes_per_side, k_angle, run, 2.0, 0.35)
+    system.initialize_parameters()
+    
+    # Initialize graph data
+    system.initialize_graph(
+        np.array(graph_data['X']),
+        np.array(graph_data['E']),
+        np.array(graph_data['L']),
+        np.array(graph_data['surface_mask']),
+        np.array(graph_data['degrees'])
+    )
+    
+    system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
+    system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
+    
+    
+    displacement = system.displacement
+    shift = system.shift
+    R = system.X
+    k_bond = system.spring_constants
+
+    # Minimizing the initial configuration
+    _, R, _ = simulate_minimize_penalty(R, k_bond, system, shift, displacement)
+
+    system.X = R
+    system.create_spring_constants()
+    system.calculate_initial_angles_method(displacement)
+    k_bond = system.spring_constants
+    R_temp = R
+    k_temp = k_bond
+
+    result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
+    
+    poisson = result.poisson
+    poisson_bias = np.abs(poisson - poisson_target)
+    bandgap_bias = utils.gap_objective(result.frequency_init, system.frequency_center, k_fit)
+    
+    # Combination adaptive function
+    adaptive_function = acoustic_auxetic_adaptive_wrapper(system, shift, displacement, k_fit, bandgap_bias, poisson_target, poisson_bias)
+    
+    grad_adaptive_R = jit(grad(adaptive_function, argnums=0))
+    grad_adaptive_k = jit(grad(adaptive_function, argnums=1))
+
+    @jax.checkpoint
+    def optimization_step(carry):
+        R_temp, k_temp = carry
+        gradients_R = grad_adaptive_R(R_temp, k_temp)
+        gradients_k = grad_adaptive_k(R_temp, k_temp)
+        k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate=0.02)
+        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp, 0.01)
+        return R_temp, k_temp
+
+    def scan_body(carry, _):
+        R_temp, k_temp = carry
+        R_temp, k_temp = optimization_step((R_temp, k_temp))
+        result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
+
+        fit_init = utils.gap_objective(result.frequency_init, system.frequency_center, k_fit)
+        fit_final = utils.gap_objective(result.frequency_final, system.frequency_center, k_fit)
+
+        poisson_distance = (result.poisson - poisson_target) / poisson_bias
+        bandgap_distance = (fit_final/bandgap_bias)**2 + (1- (fit_init/bandgap_bias))**2
+
+        # Use jax.debug.print for conditional printing
+        def print_nan_info(poisson_distance, bandgap_distance, result_poisson, fit_init, fit_final):
+            debug.print("NaN detected: poisson_distance={}, bandgap_distance={}", poisson_distance, bandgap_distance)
+            debug.print("result.poisson={}, fit_init={}, fit_final={}", result_poisson, fit_init, fit_final)
+            return 0  # Return value is not used
+
+        # Use lax.cond for conditional execution
+        _ = lax.cond(
+            np.isnan(poisson_distance) | np.isnan(bandgap_distance),
+            lambda _: print_nan_info(poisson_distance, bandgap_distance, result.poisson, fit_init, fit_final),
+            lambda _: 0,
+            operand=None
+        )
+
+        metrics = {
+            'poisson_distance': poisson_distance,
+            'bandgap_distance': bandgap_distance,
+            'forbidden_states_init': result.forbidden_states_init,
+            'forbidden_states_final': result.forbidden_states_final,
+            'poisson': result.poisson,
+            'energy_penalty': energies.penalty_energy(R_temp, system),
+            'stiffness_penalty': utils.stiffness_penalty(system, k_temp)
+        }
+
+        evolution_data = (R_temp, k_temp) if output_evolution else None
+
+        return (R_temp, k_temp), (metrics, evolution_data)
+
+    (R_temp, k_temp), (metrics, evolution_data) = lax.scan(scan_body, (R_temp, k_temp), None, length=opt_steps)
+
+    # Transfer results to CPU
+    R_temp = jax.device_get(R_temp)
+    k_temp = jax.device_get(k_temp)
+    # Convert JAX arrays to NumPy arrays for final output
+    metrics = jax.tree_map(onp.array, metrics)
+
+    if onp.isnan(metrics['poisson_distance'][-1]) or onp.isnan(metrics['bandgap_distance'][-1]):
+        print(f"Warning: NaN values detected in final results.")
+        print(f"Final poisson_distance: {metrics['poisson_distance'][-1]}")
+        print(f"Final bandgap_distance: {metrics['bandgap_distance'][-1]}")
+        print(f"Final poisson: {metrics['poisson'][-1]}")
+        print(f"Final energy_penalty: {metrics['energy_penalty'][-1]}")
+        print(f"Final stiffness_penalty: {metrics['stiffness_penalty'][-1]}")
+
+    result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
+
+    np.savez(str(run),
+             R_temp=R_temp,
+             k_temp=k_temp,
+             poisson=result.poisson,
+             poisson_target=poisson_target,
+             perturbation=perturbation,
+             connectivity=system.E,
+             surface_nodes=system.surface_nodes,
+             bandgap_distance=metrics['bandgap_distance'][-1],
+             forbidden_states_init=metrics['forbidden_states_init'][-1],
+             forbidden_states_final=metrics['forbidden_states_final'][-1],
+             exit_flag=0)  # You may want to update this based on convergence criteria
+
+    if output_evolution:
+        evolution_log = {'position': np.array([data[0] for data in evolution_data]),
+                         'bond_strengths': np.array([data[1] for data in evolution_data])}
+        return (metrics['poisson_distance'][-1], metrics['bandgap_distance'][-1], 0, R_temp, k_temp,
+                system, shift, displacement, result, evolution_log)
+    else:
+        return (metrics['poisson_distance'][-1], metrics['bandgap_distance'][-1], 0, R_temp, k_temp,
+                system, shift, displacement, result)
 
 @profile
 def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, poisson_target, opt_steps, output_evolution = False):
