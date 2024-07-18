@@ -3,8 +3,8 @@ import jax.numpy as np
 import numpy as onp
 import networkx as nx
 from scipy.spatial import Delaunay
- 
-from jax.config import config; config.update("jax_enable_x64", True)
+import jax
+jax.config.update("jax_enable_x64", True); jax.config.update("jax_debug_nans", False)
 
 from jax import jit, grad, vmap, random, lax
 from jax_md import quantity, space, energy, minimize

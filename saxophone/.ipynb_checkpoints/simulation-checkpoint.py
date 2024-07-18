@@ -1,6 +1,7 @@
 import jax.numpy as np
 import numpy as onp
-from jax.config import config; config.update("jax_enable_x64", True)
+import jax
+jax.config.update("jax_enable_x64", True); jax.config.update("jax_debug_nans", False)
 from jax_md import energy, minimize, elasticity
 from jax import jit, vmap, grad
 from jax import lax
@@ -71,7 +72,7 @@ def simulate_periodic(R,
 
     
 
-    emt_fn = elasticity.athermal_moduli(energy_fn_wrapper)#, check_convergence=True)
+    emt_fn = elasticity.athermal_moduli(energy_fn(R,system))#, check_convergence=True)
     C = emt_fn(R,system.box_size)
     
     return elasticity.extract_isotropic_moduli(C)['nu'], emt_fn, energy_fn_wrapper
