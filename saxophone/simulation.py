@@ -1,7 +1,7 @@
 import jax.numpy as np
 import numpy as onp
-from jax.config import config; config.update("jax_enable_x64", True)
 from jax_md import energy, minimize
+import jax
 from jax import jit, vmap, grad
 from jax import lax
 from jax import debug
@@ -9,7 +9,7 @@ import networkx as nx
 import saxophone.utils as utils
 import saxophone.energies as energies
 from collections import namedtuple
-#from memory_profiler import profile
+from memory_profiler import profile
 import gc
 
 Result_forbidden_modes = namedtuple('Result', [
@@ -29,6 +29,7 @@ Result_forbidden_modes = namedtuple('Result', [
     'poisson'
 ])
 
+@profile
 def simulate_minimize_penalty(R,
                      k_bond,
                      system,
@@ -490,7 +491,7 @@ def scale_bond_importance(bond_importance):
     bi_centered = bond_importance - np.mean(bond_importance)
     return bi_centered/np.max(np.abs(bi_centered))
 
-#@profile
+
 def forbidden_states_compression(R,
                                  k_bond,
                                  system,
@@ -616,6 +617,7 @@ def acoustic_compression_wrapper(system, shift, displacement, k_fit):
 
 
 def acoustic_auxetic_adaptive_wrapper(system, shift, displacement, k_fit, bandgap_bias, poisson_target, poisson_bias):
+    @jax.checkpoint
     def acoustic_auxetic_adaptive(R, k_bond):
         """
         objective function that adapts the objective function to the state of optimization
@@ -902,9 +904,8 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
     else: 
         return poisson, exit_flag, R_temp, k_temp, system, shift, displacement
 
-#@profile
 
-
+@profile
 def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, poisson_target, opt_steps, output_evolution = False):
 
     """
