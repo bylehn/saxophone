@@ -25,7 +25,7 @@ from timeit import default_timer as timer
 
 #poisson_target = onp.float64(sys.argv[1])
 poisson_target = -1.0
-opt_steps = 10
+opt_steps = 3
 dw = 0.1
 w_c = 2.0
 k_angle = 0.01
