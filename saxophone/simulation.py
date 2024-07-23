@@ -75,7 +75,7 @@ def simulate_periodic(R,
     emt_fn = elasticity.athermal_moduli(energy_fn_wrapper)#, check_convergence=True)
     C = emt_fn(R,system.box_size)
     
-    return elasticity.extract_isotropic_moduli(C)['nu'], emt_fn, energy_fn_wrapper
+    return elasticity.extract_isotropic_moduli(C)['nu']#, emt_fn, energy_fn_wrapper
 
 
 def simulate_periodic_wrapper(system):
@@ -106,7 +106,7 @@ def simulate_periodic_wrapper(system):
         poisson: poisson ratio
     
         """             
-        poisson,_,_ = simulate_periodic(R, k_bond, system)
+        poisson = simulate_periodic(R, k_bond, system)
         output = poisson + energies.penalty_energy(R, system) / system.penalty_scale + utils.stiffness_penalty(system, k_bond)
         # penalty added here because making a separate funtion and gradient could be memory loading...
         return output
