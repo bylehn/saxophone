@@ -5,15 +5,13 @@ import networkx as nx
 from scipy.spatial import Delaunay
 from jax import vmap
 from jax import jit
-from jax import random  
 from jax_md import quantity, space
 
 
 # %%
 class System:
-    def __init__(self, nr_points, k_angle, random_seed, r_circle, dx):
+    def __init__(self, nr_points, k_angle, r_circle, dx):
         self.nr_points = nr_points
-        self.random_seed = random_seed
         self.r_circle = r_circle
         self.dx = dx
         self.k_angle = k_angle
@@ -68,12 +66,12 @@ class System:
 
 # %%
 
-    def initialize(self):
+    def initialize(self, random_key, subkey):
         """
         Initializes the system by setting up the graph, calculating necessary properties,
         and preparing the system for simulation.
         """
-        self.create_delaunay_graph()
+        self.create_delaunay_graph(random_key, subkey)
         R = self.X
         displacement, shift = space.free()
         self.displacement = displacement
@@ -105,9 +103,9 @@ class System:
         self.ageing_rate = ageing_rate
         self.success_fraction = success_fraction
 
-    def create_delaunay_graph(self):
+    def create_delaunay_graph(self, random_key, subkey):
         # Initialize JAX PRNGKey
-        key = random.PRNGKey(self.random_seed)
+        #key = random.PRNGKey(random_seed)
 
         # Generate the points
         xm, ym = np.meshgrid(np.arange(1, self.nr_points + 1), np.arange(1, self.nr_points + 1))
@@ -123,7 +121,7 @@ class System:
         ])
     
         # Split the key for the next random operation
-        key, subkey = random.split(key)
+        #random_key, subkey = random.split(random_key)
     
         # Add noise to the non-surface points
         noise = self.dx * 2 * (0.5 - random.uniform(subkey, (N, 2)))

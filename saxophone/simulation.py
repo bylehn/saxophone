@@ -2,7 +2,7 @@ import jax.numpy as np
 import numpy as onp
 from jax_md import energy, minimize
 import jax
-from jax import jit, vmap, grad
+from jax import jit, vmap, grad, random
 from jax import lax
 from jax import debug
 import networkx as nx
@@ -906,7 +906,7 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
 
 
 @profile
-def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, poisson_target, opt_steps, output_evolution=False):
+def generate_auxetic_acoustic_adaptive(run_id, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, poisson_target, opt_steps):
     """
     A combination version that uses a wrapper that implicitly combines scaled objectives.
     
@@ -924,9 +924,11 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
     ageing_rate = 0.1
     success_frac = 0.05
     k_fit = 2.0 / (dw**2)
+    random_key = random.PRNGKey(run_id)
+    random_key, subkey = random.split(random_key)
     
-    system = utils.System(number_of_nodes_per_side, k_angle, run, 2.0, 0.35)
-    system.initialize()
+    system = utils.System(number_of_nodes_per_side, k_angle, 2.0, 0.35) 
+    system.initialize(random_key, subkey)
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
     displacement = system.displacement
@@ -937,13 +939,16 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
     # Minimizing the initial configuration
     _, R, _ = simulate_minimize_penalty(R, k_bond, system, shift, displacement)
 
-    system.X = R
-    displacement = system.displacement
-    system.create_spring_constants()
-    system.calculate_initial_angles_method(displacement)
+    system.create_spring_constants() # TODO - return values instead, don't change system attributes
+    system.calculate_initial_angles_method(displacement) # TODO - return values instead, don't change system attributes
     k_bond = system.spring_constants
     R_temp = R
     k_temp = k_bond
+
+    R_temp_evolution = np.zeros((opt_steps, system.N, 2))
+    R_temp_evolution = R_temp_evolution.at[0].set(R_temp)
+    k_temp_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
+    k_temp_evolution = k_temp_evolution.at[0].set(k_temp)
 
     result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
     
@@ -954,25 +959,19 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
     forbidden_states_final = result.forbidden_states_final
     bandgap_bias = utils.gap_objective(result.frequency_init, system.frequency_center, k_fit)  # this is used to define the radius of the fitness function.
     
-    print('initial forbidden states: ', forbidden_states_init, bandgap_bias)
-    
     # Combination adaptive function
     adaptive_function = acoustic_auxetic_adaptive_wrapper(system, shift, displacement, k_fit, bandgap_bias, poisson_target, poisson_bias)
     
     grad_adaptive_R = jit(grad(adaptive_function, argnums=0))
     grad_adaptive_k = jit(grad(adaptive_function, argnums=1))
 
-    print("Step", "max_grad", "bandgap_distance", "poisson_distance", "forbidden_states_init", "forbidden_states_final", "poisson", "energy_penalty", "stiffness penalty")
-
     def scan_body(carry, step):
         R_temp, k_temp, best_poisson_distance, best_bandgap_distance = carry
-
-        print(f"Step {step}: Input shapes - R_temp: {R_temp.shape}, k_temp: {k_temp.shape}, best_poisson_distance: {np.shape(best_poisson_distance)}, best_bandgap_distance: {np.shape(best_bandgap_distance)}")
 
         gradients_R = grad_adaptive_R(R_temp, k_temp)
         gradients_k = grad_adaptive_k(R_temp, k_temp)
 
-        gradient_max = np.max(np.abs(np.vstack((gradients_k, gradients_R.ravel()[:, np.newaxis]))))
+        #gradient_max = np.max(np.abs(np.vstack((gradients_k, gradients_R.ravel()[:, np.newaxis])))) # TODO - if this is to be printed, prefiil an array with zeros and update the values
 
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate=0.02)
         R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp, 0.01)
@@ -982,8 +981,6 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
         poisson = result.poisson
         frequency_init = result.frequency_init
         frequency_final = result.frequency_final
-        forbidden_states_init = result.forbidden_states_init
-        forbidden_states_final = result.forbidden_states_final
 
         fit_init = utils.gap_objective(frequency_init, system.frequency_center, k_fit)
         fit_final = utils.gap_objective(frequency_final, system.frequency_center, k_fit)
@@ -995,22 +992,18 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
         best_poisson_distance = np.minimum(best_poisson_distance, poisson_distance)
         best_bandgap_distance = np.minimum(best_bandgap_distance, bandgap_distance)
 
-        print(f"Step {step}: Output shapes - R_temp: {R_temp.shape}, k_temp: {k_temp.shape}, best_poisson_distance: {np.shape(best_poisson_distance)}, best_bandgap_distance: {np.shape(best_bandgap_distance)}")
-
         new_carry = (R_temp, k_temp, best_poisson_distance, best_bandgap_distance)
         return new_carry, (R_temp, k_temp, poisson_distance, bandgap_distance, result)
 
     # Initial carry value
-    init_carry = (R_temp, k_temp, np.array(np.inf), np.array(np.inf))
-
-    print(f"Initial carry shapes: R_temp: {R_temp.shape}, k_temp: {k_temp.shape}, best_poisson_distance: {np.shape(init_carry[2])}, best_bandgap_distance: {np.shape(init_carry[3])}")
+    init_carry = (R_temp, k_temp, np.array(np.inf), np.array(np.inf)) # TODO - change np.inf to known array lengths
 
     # Run lax.scan
     final_carry, scan_results = lax.scan(scan_body, init_carry, np.arange(opt_steps))
 
     # Unpack final results
     R_temp, k_temp, best_poisson_distance, best_bandgap_distance = final_carry
-    R_evolution, k_evolution, poisson_distances, bandgap_distances, results = scan_results
+    R_evolution, k_evolution, poisson_distances, bandgap_distances, results = scan_results # TODO - remove evolution log
 
     # Determine exit flag
     exit_flag = 0  # Default: max steps reached
@@ -1023,24 +1016,7 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
     forbidden_states_init = final_result[3]
     forbidden_states_final = final_result[4]
 
-    np.savez(str(run), 
-             R_temp=R_temp, 
-             k_temp=k_temp, 
-             poisson=poisson, 
-             poisson_target=poisson_target,
-             perturbation=perturbation,
-             connectivity=system.E,
-             surface_nodes=system.surface_nodes,
-             bandgap_distance=best_bandgap_distance, 
-             forbidden_states_init=forbidden_states_init,
-             forbidden_states_final=forbidden_states_final,
-             exit_flag=exit_flag)
-
-    if output_evolution:
-        evolution_log = {'position': R_evolution, 'bond_strengths': k_evolution}
-        return best_poisson_distance, best_bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result, evolution_log
-    else:
-        return best_poisson_distance, best_bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result
+    return best_poisson_distance, best_bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result
 
 
 def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, perturbation, frequency_closed, width_closed, frequency_opened, width_opened, poisson_target, opt_steps, output_evolution = False):
