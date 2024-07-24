@@ -30,12 +30,7 @@ Result_forbidden_modes = namedtuple('Result', [
 ])
 
 @profile
-def simulate_minimize_penalty(R,
-                     k_bond,
-                     system,
-                     shift,
-                     displacement
-                     ):
+def simulate_minimize_penalty(system):
     """
     minimizes using a System instance and is set to evaulate network's penalties only (spring constants and angle energy not included)
 
@@ -55,7 +50,7 @@ def simulate_minimize_penalty(R,
     R_final: final positions
     """
     #update variables according to R so that the derivative accounts for them
-    system.X=R
+    R = system.X
     displacement = system.displacement
     system.create_spring_constants()
     system.calculate_initial_angles_method(displacement)
@@ -906,7 +901,7 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
 
 
 @profile
-def generate_auxetic_acoustic_adaptive(run_id, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, poisson_target, opt_steps):
+def generate_auxetic_acoustic_adaptive(system, poisson_target, opt_steps):
     """
     A combination version that uses a wrapper that implicitly combines scaled objectives.
     
@@ -916,43 +911,19 @@ def generate_auxetic_acoustic_adaptive(run_id, number_of_nodes_per_side, k_angle
     w_c: frequency_center
     dw: width of the bandgap
     """
-    # Parameters
-    steps = 50
-    write_every = 1
-    delta_perturbation = 0.1
-    nr_trials = 500
-    ageing_rate = 0.1
-    success_frac = 0.05
-    k_fit = 2.0 / (dw**2)
-    random_key = random.PRNGKey(run_id)
-    random_key, subkey = random.split(random_key)
-    
-    system = utils.System(number_of_nodes_per_side, k_angle, 2.0, 0.35) 
-    system.initialize(random_key, subkey)
-    system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
-    system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
-    displacement = system.displacement
+    R_init = system.X
+    k_init = system.spring_constants
     shift = system.shift
-    R = system.X
-    k_bond = system.spring_constants
+    displacement = system.displacement
+
+    R_evolution = np.zeros((opt_steps, system.N, 2))
+    R_evolution = R_evolution.at[0].set(R_init)
+    k_evolution = np.zeros((opt_steps, system.spring_constants.shape[0], 1))
+    k_evolution = k_evolution.at[0].set(k_init)
+
+    result = forbidden_states_compression(R_init, k_init, system, shift, displacement)
     
-    # Minimizing the initial configuration
-    _, R, _ = simulate_minimize_penalty(R, k_bond, system, shift, displacement)
-
-    system.create_spring_constants() # TODO - return values instead, don't change system attributes
-    system.calculate_initial_angles_method(displacement) # TODO - return values instead, don't change system attributes
-    k_bond = system.spring_constants
-    R_temp = R
-    k_temp = k_bond
-
-    R_temp_evolution = np.zeros((opt_steps, system.N, 2))
-    R_temp_evolution = R_temp_evolution.at[0].set(R_temp)
-    k_temp_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
-    k_temp_evolution = k_temp_evolution.at[0].set(k_temp)
-
-    result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
-    
-    poisson = result.poisson
+    poisson = result.poisson # initial poisson ratio
     poisson_bias = np.abs(poisson - poisson_target)  # distance bias - slower distance decline for larger difference.
 
     forbidden_states_init = result.forbidden_states_init

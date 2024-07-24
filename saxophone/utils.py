@@ -4,7 +4,7 @@ import numpy as onp
 import networkx as nx
 from scipy.spatial import Delaunay
 from jax import vmap
-from jax import jit
+from jax import jit, random
 from jax_md import quantity, space
 
 
@@ -103,9 +103,9 @@ class System:
         self.ageing_rate = ageing_rate
         self.success_fraction = success_fraction
 
-    def create_delaunay_graph(self, random_key, subkey):
+    def create_delaunay_graph(self, random_seed):
         # Initialize JAX PRNGKey
-        #key = random.PRNGKey(random_seed)
+        key = random.PRNGKey(random_seed)
 
         # Generate the points
         xm, ym = np.meshgrid(np.arange(1, self.nr_points + 1), np.arange(1, self.nr_points + 1))
@@ -121,7 +121,7 @@ class System:
         ])
     
         # Split the key for the next random operation
-        #random_key, subkey = random.split(random_key)
+        key, subkey = random.split(key)
     
         # Add noise to the non-surface points
         noise = self.dx * 2 * (0.5 - random.uniform(subkey, (N, 2)))

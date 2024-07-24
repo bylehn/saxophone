@@ -1,7 +1,6 @@
 # %%
 import jax.numpy as np
 import numpy as onp
-from jax import random
 import jax
 jax.config.update("jax_enable_x64", True); jax.config.update("jax_debug_nans", False)
 from jax_md import space
@@ -56,18 +55,22 @@ poisson_target = -1.0
 # %%
 # Initialize network
 
-system = utils.System(size, k_angle, run, 2.0, 0.35)
-system.initialize()
+system = utils.System(size, k_angle, 2.0, 0.35)
+system.initialize(random_seed=22)
 system.acoustic_parameters(frequency_opened, width_opened, nr_trials, ageing_rate, success_frac)
-system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
+system.auxetic_parameters(perturbation, delta_perturbation, min_steps, write_every)
+
+# %%
+# Minimizing the initial configuration
+_, R ,_  = simulation.simulate_minimize_penalty(system)
+
+system.X = R
 displacement = system.displacement
-shift = system.shift
-R = system.X
-k_bond = system.spring_constants
+system.create_spring_constants()
+system.calculate_initial_angles_method(displacement)
 
 
-
-
+# %%
 
 results = []
 
