@@ -144,12 +144,7 @@ def simulate_minimize_penalty(system):
     return R_init, R_final, log
 
 
-def simulate_auxetic(R,
-                     k_bond,
-                     system,
-                     shift,
-                     displacement
-                     ):
+def simulate_auxetic(R, k_bond, system):
     """
     Simulates the auxetic process using a System instance and is set to evaulate network with a "natural" equal width spring constants
 
@@ -168,8 +163,7 @@ def simulate_auxetic(R,
     R_init: initial positions
     R_final: final positions
     """
-    #update variables according to R so that the derivative accounts for them
-    system.X=R
+
     displacement = system.displacement
     system.create_spring_constants()
     system.calculate_initial_angles_method(displacement)
@@ -487,12 +481,7 @@ def scale_bond_importance(bond_importance):
     return bi_centered/np.max(np.abs(bi_centered))
 
 
-def forbidden_states_compression(R,
-                                 k_bond,
-                                 system,
-                                 shift,
-                                 displacement
-    ):
+def forbidden_states_compression(R, k_bond, system):
     """
     Get the forbidden modes when compressing the network.
 
@@ -508,12 +497,7 @@ def forbidden_states_compression(R,
     log: log dictionary
     poisson: fish, jk. the poisson ratio
     """
-    poisson, log, R_init, R_final = simulate_auxetic(R,
-                                               k_bond,
-                                               system,
-                                               shift,
-                                               displacement
-                                               )
+    poisson, log, R_init, R_final = simulate_auxetic(R, k_bond, system)
 
     C_init = create_compatibility(system, R_init)
 

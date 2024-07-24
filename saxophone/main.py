@@ -53,7 +53,7 @@ poisson_target = -1.0
 
 
 # %%
-# Initialize network
+# Initialize network for auxetic and acoustic properties
 
 system = utils.System(size, k_angle, 2.0, 0.35)
 system.initialize(random_seed=22)

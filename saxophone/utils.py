@@ -66,13 +66,12 @@ class System:
 
 # %%
 
-    def initialize(self, random_key, subkey):
+    def initialize(self, random_seed):
         """
         Initializes the system by setting up the graph, calculating necessary properties,
         and preparing the system for simulation.
         """
-        self.create_delaunay_graph(random_key, subkey)
-        R = self.X
+        self.create_delaunay_graph(random_seed)
         displacement, shift = space.free()
         self.displacement = displacement
         self.shift = shift
