@@ -4,6 +4,7 @@ import networkx as nx
 from matplotlib.animation import FuncAnimation
 from IPython.display import HTML, display
 import jax.numpy as np
+from jax_md import space
 import numpy as onp
 import saxophone.simulation as simulation
 import matplotlib as mpl
@@ -191,9 +192,12 @@ def makemovieDOS(system, k, traj, stride=10):
     # Define the update function, which is called for each frame
     def update(frame):
         plt.clf()  # Clear the current figure
+        R_0 = traj['position'][0]
         R_plt = traj['position'][frame]
         C = simulation.create_compatibility(system, R_plt)
-        D, V, forbidden_states,_ = simulation.get_forbidden_states(C, k, system)
+        B= simulation.create_incidence(system, R_plt)
+        length_ratios =  np.linalg.norm(space.map_bond(system.displacement)(R_0 [system.E[:, 0], :], R_0 [system.E[:, 1], :]), axis = 1) / np.linalg.norm(space.map_bond(system.displacement)(R_plt[system.E[:, 0], :], R_plt[system.E[:, 1], :]), axis = 1)
+        D, V, forbidden_states,_ = simulation.get_forbidden_states_deformed(C, B, length_ratios, k, system)
         plt.hist(onp.sqrt(onp.abs(D)), bins=onp.arange(-0.025, 3.025, 0.05), density=False)
         plt.xlabel(r'$\omega$')
         plt.ylabel(r'$C (\omega)$')

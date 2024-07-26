@@ -1,7 +1,7 @@
 import jax.numpy as np
 import numpy as onp
 #from jax.config import config; config.update("jax_enable_x64", True)
-from jax_md import energy, minimize
+from jax_md import energy, minimize, space
 from jax import jit, vmap, grad
 from jax import lax
 from jax import debug
@@ -359,6 +359,25 @@ def create_compatibility(system, R):
 
     return C
 
+
+
+def create_incidence(system, R):
+    N_b = system.E.shape[0]
+    #mdict = dict(zip(range(system.N), system.m))
+    #nx.set_node_attributes(system.G, mdict, 'Mass')
+
+    # Initialize B with zeros
+    B = np.zeros((2 * system.N, N_b))
+    
+
+    # Update B using the .at property for advanced indexing
+    for i in range(N_b):
+        B = B.at[2 * system.E[i, 0]:2 * system.E[i, 0] + 2, i].add(1)
+        B = B.at[2 * system.E[i, 1]:2 * system.E[i, 1] + 2, i].add(-1)
+
+    return B
+
+
 def get_forbidden_states(C, k_bond, system):
     """
     Get the forbidden modes for a given spring constant k.
@@ -385,6 +404,37 @@ def get_forbidden_states(C, k_bond, system):
                                               frequency < system.frequency_center + system.frequency_width/2))
     V = np.real(V)
     return D, V, forbidden_states, frequency
+
+def get_forbidden_states_deformed(C, B, length_ratios, k_bond, system):
+    """
+    Get the forbidden modes for a given spring constant k.
+
+    C: compatibility matrix
+    k: spring constant
+    M: mass matrix
+    w_c: center frequency
+    dw: frequency width
+
+    Returns:
+    D: eigenvalues
+    V: eigenvectors
+    forbidden_states: number of forbidden states
+    """
+    k_eff = np.diag(np.squeeze(k_bond))*length_ratios
+    k_lap = np.diag(np.squeeze(k_bond))*(1 - length_ratios)
+    K_eff = C @ k_eff @ C.T
+    L_eff = B @ k_lap @ B.T
+    DMAT = np.linalg.inv(system.mass) @ (K_eff + L_eff)
+    #debug.print("DMAT: {DMAT}", DMAT=DMAT)
+    D, V = np.linalg.eigh(DMAT)
+    D = np.real(D)
+    frequency = np.sqrt(np.abs(D))
+    forbidden_states = np.sum(np.logical_and(frequency > system.frequency_center - system.frequency_width/2,
+                                              frequency < system.frequency_center + system.frequency_width/2))
+    V = np.real(V)
+    return D, V, forbidden_states, frequency
+
+
 
 def age_springs(k_old, system, D, V, C, D_range):
     """
@@ -521,9 +571,14 @@ def forbidden_states_compression(R,
 
     C_init = create_compatibility(system, R_init)
 
-    C_final = create_compatibility(system, R_final)
+    
     D_init, V_init, forbidden_states_init, frequency_init = get_forbidden_states(C_init, k_bond, system)
-    D_final, V_final, forbidden_states_final, frequency_final = get_forbidden_states(C_final, k_bond, system)
+
+    l_ratios = np.linalg.norm(space.map_bond(system.displacement)(R_init [system.E[:, 0], :], R_init [system.E[:, 1], :]), axis = 1) / np.linalg.norm(space.map_bond(system.displacement)(R_final[system.E[:, 0], :], R_final[system.E[:, 1], :]), axis = 1)
+
+    C_final = create_compatibility(system, R_final)
+    B_final = create_incidence(system, R_final)
+    D_final, V_final, forbidden_states_final, frequency_final = get_forbidden_states_deformed(C_final, B_final, l_ratios, k_bond, system)
 
     return Result_forbidden_modes(D_init,
                                   V_init,
@@ -637,7 +692,6 @@ def acoustic_auxetic_adaptive_wrapper(system, shift, displacement, k_fit, bandga
         # Fitness energy for the final state
         fit_final = gap_objective(result.frequency_final, system.frequency_center, k_fit)
 
-        # Weighted objective function: Heavily weight the final state's energy
 
         poisson_distance = (result.poisson - poisson_target) / poisson_bias
         bandgap_distance =  (fit_final/bandgap_bias)**2 + (1- (fit_init/bandgap_bias))**2  # eucleadian distance in reduced fitness space of the current fitness as the ideal fitness of fit_final = 0 and fit_initial = bandgap_bias. This usually starts at 1, although can go above
@@ -1002,7 +1056,7 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
                                                   gradients_R.ravel()[:, np.newaxis] ))))
     
     
-        
+        print(np.max(gradients_k), np.max(gradients_R.ravel()[:, np.newaxis] ))
         
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
         R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp, 0.01)
@@ -1020,11 +1074,11 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
         # Fitness energy for the final state
         fit_final = utils.gap_objective(result.frequency_final, system.frequency_center, k_fit)
 
-        # Weighted objective function: Heavily weight the final state's energy
 
+        
         poisson_distance = (result.poisson - poisson_target) / poisson_bias
         bandgap_distance =  (fit_final/bandgap_bias)**2 + (1- (fit_init) /bandgap_bias)**2 
-    
+        
         
         if np.abs(poisson_distance) < 0.02 and bandgap_distance < 0.05 : 
             print('converged')
