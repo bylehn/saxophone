@@ -378,6 +378,22 @@ def create_incidence(system, R):
     return B
 
 
+def remove_constrained_nodes(C, system):
+    """
+    takes input compatibility and incidence matrices and removes rows associated with nodes on left and right
+    """
+    
+    left_indices = system.surface_nodes['left']
+    right_indices = system.surface_nodes['right']
+    constrained_nodes = np.hstack ( (system.surface_nodes['left'], system.surface_nodes['right']))
+    constrained_indices = np.asarray(constrained_indices)
+
+    constrained_indices = np.hstack ( ( 2*constrained_nodes, 2*constrained_nodes + 1) )
+    mass_matrix_constrained = np.delete(np.delete(system.mass,constrained_indices, axis=1),constrained_indices, axis=0)
+    C_constrained = np.delete(C,constrained_indices, axis=0)
+    
+    return C_constrained, mass_matrix_constrained
+
 def get_forbidden_states(C, k_bond, system):
     """
     Get the forbidden modes for a given spring constant k.
@@ -393,9 +409,14 @@ def get_forbidden_states(C, k_bond, system):
     V: eigenvectors
     forbidden_states: number of forbidden states
     """
+
+    
     kd = np.diag(np.squeeze(k_bond))
-    K = C @ kd @ C.T
-    DMAT = np.linalg.inv(system.mass) @ K
+    
+    C_constrained, mass_matrix_constrained = remove_constrained_nodes(C, system)
+    K = C_constrained @ kd @ C_constrained.T
+    
+    DMAT = np.linalg.inv(mass_matrix_constrained) @ K
     #debug.print("DMAT: {DMAT}", DMAT=DMAT)
     D, V = np.linalg.eigh(DMAT)
     D = np.real(D)
@@ -422,9 +443,14 @@ def get_forbidden_states_deformed(C, B, length_ratios, k_bond, system):
     """
     k_eff = np.diag(np.squeeze(k_bond))*length_ratios
     k_lap = np.diag(np.squeeze(k_bond))*(1 - length_ratios)
-    K_eff = C @ k_eff @ C.T
-    L_eff = B @ k_lap @ B.T
-    DMAT = np.linalg.inv(system.mass) @ (K_eff + L_eff)
+
+    C_constrained, mass_matrix_constrained = remove_constrained_nodes(C, system)
+    B_constrained, _ = remove_constrained_nodes(B, system)
+
+    
+    K_eff = C_constrained @ k_eff @ C_constrained.T
+    L_eff = B_constrained @ k_lap @ B_constrained.T
+    DMAT = np.linalg.inv(mass_matrix_constrained) @ (K_eff + L_eff)
     #debug.print("DMAT: {DMAT}", DMAT=DMAT)
     D, V = np.linalg.eigh(DMAT)
     D = np.real(D)
@@ -814,15 +840,19 @@ def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c,
 
 
     for i in range(opt_steps):
-        
+        print("configs:", np.isnan(k_temp).any(),  np.isnan(R_temp).any())
         #acoustic gradients
         gradients_k = grad_acoustic_k(R_temp, k_temp)
         gradients_R = grad_acoustic_R(R_temp, k_temp)
 
+        if np.isnan(gradients_k).any() or np.isnan(gradients_R).any():
+                print('recalculating gradients')
+                gradients_k = grad_acoustic_k(R_temp, k_temp)
+                gradients_R = grad_acoustic_R(R_temp, k_temp)
 
+        print("gradients", np.isnan(gradients_k).any(), np.isnan(gradients_R).any())
         #evaluate maximum gradients for diagnostics, the condition for explosive gradients is not necessary as the objective function minimizes initial energy
-        gradient_max = np.max( np.abs( np.vstack((gradients_k, 
-                                                  gradients_R.ravel()[:, np.newaxis] ))))
+        gradient_max = None #np.max( np.abs( np.vstack((gradients_k))))
     
         
         k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
