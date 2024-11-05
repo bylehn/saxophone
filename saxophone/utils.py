@@ -313,7 +313,7 @@ def poisson_from_config(system, R_init, R_final):
 
 
 @jit
-def update_kbonds(gradients, k_bond, learning_rate = 0.1, min_k = 0.05):
+def update_kbonds(gradients, k_bond, learning_rate = 0.1, min_k = 0.05, clip_value = 1.0):
     """
     Updates spring constants based on gradients.
 
@@ -323,6 +323,9 @@ def update_kbonds(gradients, k_bond, learning_rate = 0.1, min_k = 0.05):
 
     output: updated spring constants
     """
+
+    # Clip gradients to prevent extreme values
+    gradients = np.clip(gradients, -clip_value, clip_value)
     gradients_perpendicular = gradients - np.mean(gradients)
     gradients_normalized = gradients_perpendicular / np.max(gradients_perpendicular)
     k_bond_new = min_k +  (k_bond - min_k) * (1 - learning_rate * gradients_normalized)
@@ -330,10 +333,13 @@ def update_kbonds(gradients, k_bond, learning_rate = 0.1, min_k = 0.05):
     return k_bond_new
 
 @jit
-def update_R(surface_mask, gradients, R_current, max_disp):
+def update_R(surface_mask, gradients, R_current, max_disp, clip_value=1.0):
     """
     Updates positions based on gradients.
     """
+
+    # Clip gradients
+    gradients = np.clip(gradients, -clip_value, clip_value)
     gradients_normalized = gradients / np.max(np.linalg.norm(gradients,axis=1))
     gradients_normalized *= np.transpose(np.tile(~surface_mask, (2,1)))
     R_updated = R_current - max_disp*gradients_normalized

@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Array of poisson ratios to test
-poisson=(-1.0 -0.8 -0.6 -0.4 -0.2 -0.1 0.1 0.2 0.4 0.6 0.8 1.0)
+#poisson=(-1.0 -0.8 -0.6 -0.4 -0.2 -0.1 0.1 0.2 0.4 0.6 0.8 1.0)
+poisson=(-1.0 1.0)
 
 for ratio in "${poisson[@]}"; do
     # Replace negative sign with 'minus_' to avoid mkdir command error
@@ -15,13 +16,15 @@ for ratio in "${poisson[@]}"; do
     
     # Submit the job
     sbatch --job-name=${dir_name} \
-           --account=pi-depablo \
-           --partition=caslake \
-           --output=job_output_%j.txt \
-           --nodes=1 \
-           --tasks=1 \
-           --mem-per-cpu=16G \
-           --time=12:00:00 \
+            --account=pi-ranganathanr \
+            --partition=gpu \
+            --output=job_output.txt \
+            --nodes=1 \
+            --ntasks-per-node=16 \
+            --cpus-per-gpu=16 \
+            --gres=gpu:1 \
+            --qos=debug \
+            --time=00:30:00 \
            --wrap="python ../main.py ${ratio}"
     
     # Change back to the original directory

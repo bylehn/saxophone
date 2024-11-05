@@ -4,11 +4,12 @@
 # Submit the job
 sbatch --job-name=big \
         --account=pi-depablo \
-        --partition=caslake \
+        --partition=depablo-gpu \
         --output=job_output.txt \
         --nodes=1 \
-        --tasks=1 \
-        --mem-per-cpu=32G \
+        --ntasks-per-node=16 \
+        --cpus-per-gpu=16 \
+        --gres=gpu:1 \
         --time=12:00:00 \
         --wrap="python main.py"
     

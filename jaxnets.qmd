@@ -15,8 +15,8 @@ filters:
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-import jaxnets.simulation as simulation
-import jaxnets.utils as utils
+import saxophone.simulation as simulation
+import saxophone.utils as utils
 ```
 
 ```{python}
@@ -116,7 +116,7 @@ As we can see from @fig-poissonratios, beyond a poisson ratio target of $\pm 0.3
 To decrease the sphere radius, I modified this part of the code:
 
 
-```{.python include="jaxnets/simulation.py" start-line=271 end-line=277 filename="jaxnets/simulation.py" code-line-numbers="true"}
+```{.python include="saxophone/simulation.py" start-line=271 end-line=277 filename="saxophone/simulation.py" code-line-numbers="true"}
 ```
 In line 275 I change the sigma.
 :::
@@ -149,7 +149,7 @@ plt.show()
 
 This did not work as expected. Each run is identical to each other, because poisson target is not an input to the `generate_auxetic()` function, as it just tries to minimize the poisson ratio. What is interesting tho is that all of the 4 runs are identical. Should they be? Yes, because the random seed is fixed as 26+run, 
 
-```{.python include="jaxnets/simulation.py" start-line=889 end-line=900 filename="jaxnets/simulation.py" code-line-numbers="true"}
+```{.python include="saxophone/simulation.py" start-line=889 end-line=900 filename="saxophone/simulation.py" code-line-numbers="true"}
 ```
 so since each run is 0-9 they have a different random seed, but all the runs in different poisson ratio folders will be identical for the same number 0-9, so it makes sense. However, it is still useful in the sense that we're still not getting very negative poisson ratios, max is around $-0.4$
 :::

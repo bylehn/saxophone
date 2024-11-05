@@ -28,15 +28,27 @@ k_angle = 0.01
 perturbation = 1.0
 num_of_runs = 10
 size = 10
-results=[]
+results = []
 for run in range(num_of_runs):
-    poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result = simulation.generate_auxetic_acoustic_adaptive(run, size, k_angle, perturbation, w_c, dw, poisson_target, opt_steps)
-    results.append([run, poisson_distance, bandgap_distance, exit_flag])
-    gc.collect()
+    try:
+        poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result = simulation.generate_auxetic_acoustic_adaptive(
+            run, size, k_angle, perturbation, w_c, dw, poisson_target, opt_steps)
+        
+        # Check if results are valid
+        if np.isnan(poisson_distance) or np.isnan(bandgap_distance):
+            print(f"Run {run}: NaN encountered, skipping")
+            continue
+            
+        results.append([run, poisson_distance, bandgap_distance, exit_flag])
+        
+    except Exception as e:
+        print(f"Run {run} failed with error: {str(e)}")
+        continue
+    finally:
+        gc.collect()
 
-
-results=np.array(results)
-onp.savetxt('results.txt',np.array(results),fmt='%i %.5f %i')
-
-
-# %%
+# Only save valid results
+valid_results = [r for r in results if not np.any(np.isnan(r))]
+if valid_results:
+    results = np.array(valid_results)
+    onp.savetxt('results.txt', results, fmt='%i %.5f %.5f %i')  # Note: Added format for bandgap_distance

@@ -904,12 +904,43 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
 
 #@profile
 
+def check_numerical_stability(R_temp, k_temp, gradients_R, gradients_k, poisson_distance, bandgap_distance):
+    """
+    Check for numerical instability in optimization variables and metrics
+    
+    Returns:
+    - bool: True if numerically stable, False if unstable
+    - str: Description of the instability if found, empty string if stable
+    """
+    # Check for NaN values
+    if np.any(np.isnan(R_temp)):
+        return False, "NaN found in positions"
+    if np.any(np.isnan(k_temp)):
+        return False, "NaN found in spring constants"
+    if np.any(np.isnan(gradients_R)):
+        return False, "NaN found in position gradients"
+    if np.any(np.isnan(gradients_k)):
+        return False, "NaN found in spring constant gradients"
+    if np.isnan(poisson_distance) or np.isnan(bandgap_distance):
+        return False, "NaN found in optimization metrics"
+        
+    # Check for infinite values
+    if np.any(np.isinf(R_temp)):
+        return False, "Infinite values found in positions"
+    if np.any(np.isinf(k_temp)):
+        return False, "Infinite values found in spring constants"
+    if np.any(np.isinf(gradients_R)):
+        return False, "Infinite values found in position gradients"
+    if np.any(np.isinf(gradients_k)):
+        return False, "Infinite values found in spring constant gradients"
+    if np.isinf(poisson_distance) or np.isinf(bandgap_distance):
+        return False, "Infinite values found in optimization metrics"
+    
+    return True, ""
 
 def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, perturbation, w_c, dw, poisson_target, opt_steps, output_evolution = False):
-
     """
     a combination version that uses a wrapper that implicitly combines scaled objectives
-
     
     run: run id, also used to as random seed
     poisson_target: the aimed value for the poisson ratio
@@ -917,14 +948,21 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
     w_c: frequency_center
     dw: width of the bandgap
     """
-    #parameters
+    # Parameters
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
-    nr_trials=500
-    ageing_rate=0.1
-    success_frac=0.05
-    k_fit = 2.0/(dw**2) 
+    nr_trials = 500
+    ageing_rate = 0.1
+    success_frac = 0.05
+    k_fit = 2.0/(dw**2)
+    
+    # Add early stopping parameters
+    plateau_patience = 10  # Number of iterations to wait before early stopping
+    plateau_counter = 0
+    best_loss = float('inf')
+    min_gradient_norm = 1e-10  # Minimum gradient norm before stopping
+    
     system = utils.System(number_of_nodes_per_side, k_angle, run, 2.0, 0.35)
     system.initialize()
     system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
@@ -933,16 +971,11 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
     shift = system.shift
     R = system.X
     k_bond = system.spring_constants
-    
-    #minimizing the initial configuration
 
-    _, R ,_  = simulate_minimize_penalty(R,
-                                        k_bond,
-                                        system,
-                                        shift,
-                                        displacement)
+    # Minimizing the initial configuration
+    _, R, _ = simulate_minimize_penalty(R, k_bond, system, shift, displacement)
 
-    system.X= R
+    system.X = R
     displacement = system.displacement
     system.create_spring_constants()
     system.calculate_initial_angles_method(displacement)
@@ -951,109 +984,132 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
     k_temp = k_bond
 
     if output_evolution:
-        #set up evolution bits
         R_evolution = np.zeros((opt_steps, system.N, 2))
         R_evolution = R_evolution.at[0].set(R_temp)
         k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
         k_evolution = k_evolution.at[0].set(k_temp)
 
-
     exit_flag = 0
     """
     0: max steps reached
-
+    1: early stopping due to plateau
     2: max k_temp exceeded
     3: converged
-    
+    4: early stopping due to small gradients
+    5: numerical instability detected
     """
     
-    bandgap_contrast = 0
-    
-    result = forbidden_states_compression(R_temp, 
-                                          k_temp, 
-                                          system, 
-                                          shift, 
-                                          displacement)
+    result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
     
     poisson = result.poisson
-    poisson_bias = np.abs(poisson-poisson_target)  # distance bias - slower distance decline for larger difference.
-
+    poisson_bias = np.abs(poisson-poisson_target)
+    
     forbidden_states_init = result.forbidden_states_init
     forbidden_states_final = result.forbidden_states_final
-    bandgap_bias = utils.gap_objective(result.frequency_init, system.frequency_center, k_fit) #this is used to define the radius of the fitness function.
+    bandgap_bias = utils.gap_objective(result.frequency_init, system.frequency_center, k_fit)
     
-    print('initial forbidden states: ', forbidden_states_init, bandgap_bias ) 
+    print('initial forbidden states: ', forbidden_states_init, bandgap_bias)
     
-    # combination adaptive function
     adaptive_function = acoustic_auxetic_adaptive_wrapper(system, shift, displacement, k_fit, bandgap_bias, poisson_target, poisson_bias)
     
     grad_adaptive_R = jit(grad(adaptive_function, argnums=0))
     grad_adaptive_k = jit(grad(adaptive_function, argnums=1))
 
-    print("Step", "max_grad", "bandgap_distance", "poisson_distance",  "forbidden_states_init" , "forbidden_states_init" , "poisson", "energy_penalty", "stiffness penalty")
-    
+    print("Step", "max_grad", "bandgap_distance", "poisson_distance", "forbidden_states_init", "forbidden_states_init", "poisson", "energy_penalty", "stiffness penalty")
 
     for i in range(opt_steps):
-    
         gradients_R = grad_adaptive_R(R_temp, k_temp)
         gradients_k = grad_adaptive_k(R_temp, k_temp)
 
-        gradient_max = np.max( np.abs( np.vstack((gradients_k, 
-                                                  gradients_R.ravel()[:, np.newaxis] ))))
-    
-    
+        gradient_max = np.max(np.abs(np.vstack((gradients_k, gradients_R.ravel()[:, np.newaxis]))))
+
+        # Check numerical stability before updates
+        is_stable, instability_message = check_numerical_stability(
+            R_temp, k_temp, gradients_R, gradients_k, 
+            poisson_distance if i > 0 else 0.0,  # First iteration won't have these metrics
+            bandgap_distance if i > 0 else 0.0
+        )
         
-        
-        k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
+        # [rest of the checks for small gradients and updates]
+        k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate=0.02)
         R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp, 0.01)
     
         result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
 
-        #extract the progress
+        # Extract the progress
         poisson = result.poisson
-        forbidden_states_init = result.forbidden_states_init #if this goes zero somehow that would break the optimization
+        forbidden_states_init = result.forbidden_states_init
         forbidden_states_final = result.forbidden_states_final
     
-        #update distances
+        # Calculate metrics
         fit_init = utils.gap_objective(result.frequency_init, system.frequency_center, k_fit)
-
-        # Fitness energy for the final state
         fit_final = utils.gap_objective(result.frequency_final, system.frequency_center, k_fit)
 
-        # Weighted objective function: Heavily weight the final state's energy
-
         poisson_distance = (result.poisson - poisson_target) / poisson_bias
-        bandgap_distance =  (fit_final/bandgap_bias)**2 + (1- (fit_init) /bandgap_bias)**2 
-    
+        bandgap_distance = (fit_final/bandgap_bias)**2 + (1 - (fit_init)/bandgap_bias)**2
         
-        if np.abs(poisson_distance) < 0.02 and bandgap_distance < 0.05 : 
+        # Check numerical stability after updates
+        is_stable, instability_message = check_numerical_stability(
+            R_temp, k_temp, gradients_R, gradients_k,
+            poisson_distance, bandgap_distance
+        )
+        
+        if not is_stable:
+            print(f'Early stopping due to numerical instability: {instability_message}')
+            exit_flag = 5
+            break
+        
+        # Check for small gradients
+        if gradient_max < min_gradient_norm:
+            print('Early stopping due to small gradients')
+            exit_flag = 4
+            break
+
+        # Calculate current loss for plateau detection
+        current_loss = bandgap_distance + poisson_distance**2
+        
+        # Check for plateau
+        if abs(current_loss - best_loss) < 1e-5:
+            plateau_counter += 1
+        else:
+            plateau_counter = 0
+            if current_loss < best_loss:
+                best_loss = current_loss
+        
+        if plateau_counter >= plateau_patience:
+            print('Early stopping due to plateau')
+            exit_flag = 1
+            break
+        
+        # Check for convergence
+        if np.abs(poisson_distance) < 0.02 and bandgap_distance < 0.05:
             print('converged')
             exit_flag = 3
             break
     
+        print(i, gradient_max, bandgap_distance, poisson_distance, forbidden_states_init, 
+              forbidden_states_final, poisson, energies.penalty_energy(R_temp, system), 
+              utils.stiffness_penalty(system, k_temp))
         
-        print(i, gradient_max, bandgap_distance, poisson_distance, forbidden_states_init, forbidden_states_final, poisson, energies.penalty_energy(R_temp, system), utils.stiffness_penalty(system, k_temp))
-        
-        if output_evolution: 
-            #set evolution bits for the network
+        if output_evolution:
             R_evolution = R_evolution.at[i+1].set(R_temp)
             k_evolution = k_evolution.at[i+1].set(k_temp)
    
     np.savez(str(run), 
-             R_temp = R_temp, 
-             k_temp = k_temp, 
-             poisson = poisson, 
-             poisson_target = poisson_target,
-             perturbation = perturbation,
-             connectivity = system.E,
-             surface_nodes = system.surface_nodes,
-             bandgap_distance = bandgap_distance, 
-             forbidden_states_init = result.forbidden_states_init,
-             forbidden_states_final = result.forbidden_states_final,
-             exit_flag = exit_flag)
+             R_temp=R_temp, 
+             k_temp=k_temp, 
+             poisson=poisson, 
+             poisson_target=poisson_target,
+             perturbation=perturbation,
+             connectivity=system.E,
+             surface_nodes=system.surface_nodes,
+             bandgap_distance=bandgap_distance, 
+             forbidden_states_init=result.forbidden_states_init,
+             forbidden_states_final=result.forbidden_states_final,
+             exit_flag=exit_flag)
+             
     if output_evolution:
-        
-        evolution_log = {'position' : R_evolution, 'bond_strengths' : k_evolution}
+        evolution_log = {'position': R_evolution, 'bond_strengths': k_evolution}
         return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result, evolution_log
     else:
         return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result
