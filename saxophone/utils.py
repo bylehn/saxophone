@@ -313,36 +313,66 @@ def poisson_from_config(system, R_init, R_final):
 
 
 @jit
-def update_kbonds(gradients, k_bond, learning_rate = 0.1, min_k = 0.05, clip_value = 1.0):
+def update_kbonds(gradients, k_bond, learning_rate=0.02, min_k=0.05, max_k=5.0, eps=1e-8):
     """
-    Updates spring constants based on gradients.
-
-    gradients: gradients of the energy function
-    k_bond: spring constants
-    learning_rate: learning rate
-
-    output: updated spring constants
+    Updates spring constants with improved stability and bounds checking.
+    All operations need to be JAX-compatible.
     """
-
-    # Clip gradients to prevent extreme values
-    gradients = np.clip(gradients, -clip_value, clip_value)
+    # Gradient clipping using smooth operations
+    grad_norm = np.max(np.abs(gradients))
+    clip_threshold = 1.0
+    scale = clip_threshold / (grad_norm + eps)
+    # Use multiply and min instead of conditional
+    gradients = gradients * np.minimum(1.0, scale)
+    
+    # Center and normalize gradients
     gradients_perpendicular = gradients - np.mean(gradients)
-    gradients_normalized = gradients_perpendicular / np.max(gradients_perpendicular)
-    k_bond_new = min_k +  (k_bond - min_k) * (1 - learning_rate * gradients_normalized)
-
-    return k_bond_new
+    grad_scale = np.maximum(np.max(np.abs(gradients_perpendicular)), eps)
+    gradients_normalized = gradients_perpendicular / grad_scale
+    
+    # Update with bounds checking
+    k_bond_raw = min_k + (k_bond - min_k) * (1 - learning_rate * gradients_normalized)
+    k_bond_new = np.clip(k_bond_raw, min_k, max_k)
+    
+    # Smooth large changes using continuous operations
+    max_change = 0.2
+    k_change = k_bond_new - k_bond
+    k_change_limits = max_change * k_bond
+    k_change_clipped = np.clip(k_change, -k_change_limits, k_change_limits)
+    k_bond_final = k_bond + k_change_clipped
+    
+    return k_bond_final
 
 @jit
-def update_R(surface_mask, gradients, R_current, max_disp, clip_value=1.0):
+def update_R(surface_mask, gradients, R_current, max_disp, eps=1e-8, max_displacement=0.1):
     """
-    Updates positions based on gradients.
+    Updates positions with improved stability and displacement limits.
+    All operations need to be JAX-compatible.
     """
-
-    # Clip gradients
-    gradients = np.clip(gradients, -clip_value, clip_value)
-    gradients_normalized = gradients / np.max(np.linalg.norm(gradients,axis=1))
-    gradients_normalized *= np.transpose(np.tile(~surface_mask, (2,1)))
-    R_updated = R_current - max_disp*gradients_normalized
+    # Gradient clipping using smooth operations
+    grad_norms = np.linalg.norm(gradients, axis=1)
+    max_norm = np.maximum(np.max(grad_norms), eps)
+    clip_threshold = 1.0
+    scale = clip_threshold / max_norm
+    gradients = gradients * np.minimum(1.0, scale)
+    
+    # Normalize gradients
+    grad_norms = np.linalg.norm(gradients, axis=1, keepdims=True)
+    grad_scale = np.maximum(grad_norms, eps)
+    gradients_normalized = gradients / grad_scale
+    
+    # Apply surface mask
+    mask = np.transpose(np.tile(~surface_mask, (2,1)))
+    gradients_normalized = gradients_normalized * mask
+    
+    # Calculate displacement with limiting
+    displacement = max_disp * gradients_normalized
+    displacement_mag = np.linalg.norm(displacement, axis=1, keepdims=True)
+    scale = np.minimum(1.0, max_displacement / (displacement_mag + eps))
+    displacement = displacement * scale
+    
+    # Update positions
+    R_updated = R_current - displacement
     
     return R_updated
 
