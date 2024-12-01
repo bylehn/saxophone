@@ -1172,8 +1172,11 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
             exit_flag = 1
             break
         
-        # Convergence check remains the same
-        if np.abs(poisson_distance) < 0.02 and bandgap_distance < 0.05:
+        # Convergence check with additional conditions
+        if (np.abs(poisson_distance) < 0.05 and 
+            bandgap_distance < 0.25 and 
+            forbidden_states_final == 0 and 
+            abs(forbidden_states_init - forbidden_states_final) > 10):
             print('converged')
             exit_flag = 3
             break
