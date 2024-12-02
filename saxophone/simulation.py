@@ -841,7 +841,7 @@ def generate_acoustic(run, number_of_nodes_per_side, k_angle, perturbation, w_c,
         return bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement, evolution_log
     return bandgap_contrast, exit_flag, R_temp, k_temp, system, shift, displacement
 
-def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_steps, output_evolution=False,
+def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_steps, poisson_target, output_evolution=False,
                     initial_lr=0.02, lr_decay=0.995, gradient_clip=1.0, stability_threshold=1e3):
     """
     Generates an auxetic network with improved stability and convergence monitoring.
@@ -856,6 +856,7 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
     plateau_counter = 0
     best_loss = float('inf')
     min_gradient_norm = 1e-10
+    poisson_tolerance = 0.02
     
     system = utils.System(number_of_nodes_per_side, k_angle, run, 2.0, 0.35)
     system.initialize()
@@ -935,7 +936,9 @@ def generate_auxetic(run, number_of_nodes_per_side, k_angle, perturbation, opt_s
             exit_flag = 1
             break
         
-        if abs(poisson) < 0.02:
+        poisson_distance = abs(poisson - poisson_target)
+        if poisson_distance < poisson_tolerance:
+            print('Converged - achieved poisson ratio')
             exit_flag = 3
             break
     
