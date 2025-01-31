@@ -1290,46 +1290,542 @@ def generate_auxetic_acoustic_adaptive(run, number_of_nodes_per_side, k_angle, p
         return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result
 
 
-def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, perturbation, frequency_closed, width_closed, frequency_opened, width_opened, poisson_target, opt_steps, output_evolution = False):
-
+def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, perturbation, 
+                               frequency_closed, width_closed, frequency_opened, width_opened, 
+                               poisson_target, opt_steps, output_evolution=False,
+                               initial_lr=0.02, lr_decay=0.995, gradient_clip=1.0, 
+                               stability_threshold=1e3):
     """
-    run: run id, also used to as random seed
-    poisson_target: the aimed value for the poisson ratio
-    perturbation: absolute value of perturbation of the network for compression
-    frequency_closed : frequency of bandgap center being closed upon compression
-    width_closed :  width of the bandgap being closed
-    frequency_opened : frequency of bandgap center being opened upon compression
-    width_opened : width of the bandgap being opened
-    opt_steps: max steps attempted for optimization
+    Optimizes a network to shift its bandgap frequency while maintaining auxetic behavior.
     
+    Parameters:
+    -----------
+    run : int
+        Run ID and random seed
+    number_of_nodes_per_side : int 
+        Size of network grid
+    k_angle : float
+        Angular spring constant
+    perturbation : float
+        Compression magnitude
+    frequency_closed/opened : float
+        Center frequencies for closing/opening bandgaps
+    width_closed/opened : float
+        Width of closing/opening bandgaps
+    poisson_target : float
+        Target Poisson's ratio
+    opt_steps : int
+        Maximum optimization steps
+    output_evolution : bool
+        Whether to track system evolution
+    initial_lr : float
+        Initial learning rate
+    lr_decay : float 
+        Learning rate decay per step
+    gradient_clip : float
+        Maximum gradient magnitude
+    stability_threshold : float
+        Maximum allowed parameter values
     """
-    #parameters
+    # Initialize parameters
     steps = 50
     write_every = 1
     delta_perturbation = 0.1
-    nr_trials=500
-    ageing_rate=0.1
-    success_frac=0.05
-    k_fit = 2.0/(width_opened**2) 
+    nr_trials = 500
+    ageing_rate = 0.1
+    success_frac = 0.05
     
+    # Early stopping parameters
+    plateau_patience = 10
+    plateau_counter = 0
+    best_loss = float('inf')
+    min_gradient_norm = 1e-10
+    
+    # System setup
     system = utils.System(number_of_nodes_per_side, k_angle, run, 2.0, 0.35)
     system.initialize()
     system.acoustic_parameters(frequency_opened, width_opened, nr_trials, ageing_rate, success_frac)
     system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
+    
     displacement = system.displacement
     shift = system.shift
     R = system.X
     k_bond = system.spring_constants
     
-    #minimizing the initial configuration
+    # Initial configuration minimization
+    _, R, _ = simulate_minimize_penalty(R, k_bond, system, shift, displacement)
 
-    _, R ,_  = simulate_minimize_penalty(R,
-                                        k_bond,
-                                        system,
-                                        shift,
-                                        displacement)
+    # Update system state
+    system.X = R
+    displacement = system.displacement
+    system.create_spring_constants()
+    system.calculate_initial_angles_method(displacement)
+    k_bond = system.spring_constants
+    R_temp = R
+    k_temp = k_bond
 
-    system.X= R
+    # Evolution tracking setup
+    if output_evolution:
+        R_evolution = np.zeros((opt_steps, system.N, 2))
+        k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
+        R_evolution = R_evolution.at[0].set(R_temp)
+        k_evolution = k_evolution.at[0].set(k_temp)
+
+    # Fitting parameters
+    k_fit_closed = 2.0/(width_closed**2) 
+    k_fit_opened = 2.0/(width_opened**2)
+    exit_flag = 0
+    
+    # Initial state evaluation
+    result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
+    poisson = result.poisson
+    poisson_bias = np.abs(poisson - poisson_target)
+
+    # Calculate initial contrasts
+    closed_contrast_ratio = utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed) / \
+                           utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed)
+    opened_contrast_ratio = utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened) / \
+                           utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)
+
+    # Initial metrics
+    poisson_distance = (poisson - poisson_target) / poisson_bias
+    bandgap_distance = 0.5 * (closed_contrast_ratio + opened_contrast_ratio)
+    
+    # Print initial state
+    print(" Contrasts:   Closed,   Opened")
+    print('initial : ', utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed),
+          utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened))
+    print('final   : ', utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed),
+          utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened))
+    
+    # Initialize gradient functions
+    acoustic_function = acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed, width_closed, frequency_opened, width_opened)
+    auxetic_function = simulate_auxetic_wrapper(R, k_bond, system, shift, displacement, poisson_target)
+    
+    grad_acoustic_R = jit(grad(acoustic_function, argnums=0))
+    grad_acoustic_k = jit(grad(acoustic_function, argnums=1))
+    grad_auxetic_R = jit(grad(auxetic_function, argnums=0))
+    grad_auxetic_k = jit(grad(auxetic_function, argnums=1))
+
+    def check_network_stability(R, k, threshold):
+        """Check if network configuration is becoming unstable"""
+        if np.any(np.abs(R) > threshold) or np.any(np.abs(k) > threshold):
+            return False, "Network configuration exceeds stability threshold"
+        return True, ""
+
+    print("Step max_grad bandgap_dist poisson_dist closed_ratio opened_ratio poisson energy stiffness")
+
+    for i in range(opt_steps):
+        gc.collect()
+
+        # Update learning rate
+        current_lr = initial_lr * (lr_decay ** i)
+        current_position_lr = current_lr / 2
+        
+        # Calculate gradients
+        gradients_acoustic_k = grad_acoustic_k(R_temp, k_temp)
+        gradients_acoustic_R = grad_acoustic_R(R_temp, k_temp)
+        gradients_auxetic_k = grad_auxetic_k(R_temp, k_temp)
+        gradients_auxetic_R = grad_auxetic_R(R_temp, k_temp)
+        
+        # Calculate maximum gradient for diagnostics
+        gradient_max = np.max(np.abs(np.vstack((
+            gradients_auxetic_k, gradients_auxetic_R.ravel()[:, np.newaxis],
+            gradients_acoustic_k, gradients_acoustic_R.ravel()[:, np.newaxis]
+        ))))
+
+        # Clip gradients if needed
+        if gradient_max > gradient_clip:
+            scale = gradient_clip / (gradient_max + 1e-8)
+            gradients_acoustic_R *= scale
+            gradients_acoustic_k *= scale
+            gradients_auxetic_R *= scale
+            gradients_auxetic_k *= scale
+            
+        # Check stability
+        is_stable, instability_message = check_numerical_stability(
+            R_temp, k_temp, 
+            poisson_distance * gradients_auxetic_R + bandgap_distance * gradients_acoustic_R,
+            poisson_distance * gradients_auxetic_k + bandgap_distance * gradients_acoustic_k,
+            poisson_distance, bandgap_distance
+        )
+        
+        if not is_stable:
+            print(f'Early stopping due to numerical instability: {instability_message}')
+            exit_flag = 5
+            break
+
+        # Check network stability
+        is_network_stable, network_message = check_network_stability(R_temp, k_temp, stability_threshold)
+        if not is_network_stable:
+            print(f'Early stopping due to network instability: {network_message}')
+            exit_flag = 6
+            break
+            
+        # Normalize gradients
+        gradients_auxetic_k = utils.normalize_gradients(gradients_auxetic_k)
+        gradients_auxetic_R = utils.normalize_gradients(gradients_auxetic_R)
+        gradients_acoustic_k = utils.normalize_gradients(gradients_acoustic_k)
+        gradients_acoustic_R = utils.normalize_gradients(gradients_acoustic_R)
+
+        # Calculate weighted gradients
+        gradients_k = poisson_distance * gradients_auxetic_k + bandgap_distance * gradients_acoustic_k
+        gradients_R = poisson_distance * gradients_auxetic_R + bandgap_distance * gradients_acoustic_R
+        
+        # Update parameters
+        k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate=current_lr)
+        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp, current_position_lr)
+        
+        # Evaluate new state
+        result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
+        poisson = result.poisson
+        
+        # Calculate new metrics
+        closed_contrast_ratio = utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed) / \
+                               utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed)
+        opened_contrast_ratio = utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened) / \
+                               utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)
+        
+        poisson_distance = (poisson - poisson_target) / poisson_bias
+        bandgap_distance = 0.5 * (closed_contrast_ratio + opened_contrast_ratio)
+        
+        # Calculate current loss
+        current_loss = bandgap_distance + poisson_distance**2
+        
+        # Check for small gradients
+        if gradient_max < min_gradient_norm:
+            print('Early stopping due to small gradients')
+            exit_flag = 4
+            break
+            
+        # Check for plateau
+        if abs(current_loss - best_loss) < 1e-5:
+            plateau_counter += 1
+        else:
+            plateau_counter = 0
+            if current_loss < best_loss:
+                best_loss = current_loss
+                
+        if plateau_counter >= plateau_patience:
+            print('Early stopping due to plateau')
+            exit_flag = 1
+            break
+        
+        # Check convergence
+        if np.abs(poisson_distance) < 0.02 and bandgap_distance < 0.05:
+            print('Converged')
+            exit_flag = 3
+            break
+            
+        # Print progress
+        print(f"{i} {gradient_max:.3f} {bandgap_distance:.3f} {poisson_distance:.3f} "
+              f"{closed_contrast_ratio:.3f} {opened_contrast_ratio:.3f} {poisson:.3f} "
+              f"{energies.penalty_energy(R_temp, system):.3f} "
+              f"{utils.stiffness_penalty(system, k_temp):.3f}")
+        
+        # Clear gradients
+        del gradients_acoustic_k, gradients_acoustic_R, gradients_auxetic_k, gradients_auxetic_R
+        gc.collect()
+
+        if output_evolution:
+            R_evolution = R_evolution.at[i+1].set(R_temp)
+            k_evolution = k_evolution.at[i+1].set(k_temp)
+
+    # Calculate final contrasts
+    closed_contrasts = [
+        utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed),
+        utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed)
+    ]
+    opened_contrasts = [
+        utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened),
+        utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)
+    ]
+
+    # Save results
+    np.savez(str(run),
+             R_temp=R_temp,
+             k_temp=k_temp,
+             connectivity=system.E,
+             surface_nodes=system.surface_nodes,
+             poisson=poisson,
+             poisson_target=poisson_target,
+             bandgap_distance=bandgap_distance,
+             closed_contrast_ratio=closed_contrast_ratio,
+             opened_contrast_ratio=opened_contrast_ratio,
+             closed_contrasts=closed_contrasts,
+             opened_contrasts=opened_contrasts,
+             forbidden_states_final=result.forbidden_states_final,
+             exit_flag=exit_flag)
+
+    gc.collect()
+
+    if output_evolution:
+        evolution_log = {'position': R_evolution, 'bond_strengths': k_evolution}
+        return (poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, 
+                system, shift, displacement, result, evolution_log)
+    else:
+        return (poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, 
+                system, shift, displacement, result)
+
+# Define a new named tuple for the initial state only
+Result_initial_modes = namedtuple('Result_initial_modes', [
+    'D_init',
+    'V_init',
+    'C_init',
+    'forbidden_states_init',
+    'frequency_init',
+    'R_init'
+])
+
+def generate_acoustic_initial(run, number_of_nodes_per_side, k_angle, w_c, dw, opt_steps, 
+                     output_evolution=False, initial_lr=0.02, lr_decay=0.995, 
+                     gradient_clip=0.5, stability_threshold=1e3):
+    """
+    Generates an acoustic network optimized for bandgap properties in the initial state.
+    
+    Parameters:
+    - run: Run ID and random seed
+    - number_of_nodes_per_side: Number of nodes per side of the network
+    - k_angle: Angle spring constant
+    - w_c: Center frequency for the bandgap
+    - dw: Bandgap width
+    - opt_steps: Maximum optimization steps
+    - output_evolution: Whether to track evolution history
+    - initial_lr: Initial learning rate
+    - lr_decay: Learning rate decay per step 
+    - gradient_clip: Maximum gradient magnitude
+    - stability_threshold: Network stability threshold
+    """
+    # System parameters
+    nr_trials = 500
+    ageing_rate = 0.1
+    success_frac = 0.05
+    k_fit = 2.0 / (dw**2)  # Bandgap width fitting parameter
+    
+    # Early stopping parameters
+    plateau_patience = 10
+    plateau_counter = 0
+    best_loss = float('inf')
+    min_gradient_norm = 1e-10
+    
+    # Initialize system
+    system = utils.System(number_of_nodes_per_side, k_angle, run, 2.0, 0.35)
+    system.initialize()
+    system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
+    
+    # Get initial configuration
+    R = system.X
+    k_bond = system.spring_constants
+    displacement = system.displacement
+    shift = system.shift
+
+    # Minimize initial configuration
+    _, R, _ = simulate_minimize_penalty(R, k_bond, system, shift, displacement)
+
+    # Update system state
+    system.X = R
+    system.displacement = displacement
+    system.create_spring_constants()
+    system.calculate_initial_angles_method(displacement)
+    k_bond = system.spring_constants
+    R_temp = R
+    k_temp = k_bond
+
+    # Initialize evolution tracking if needed
+    if output_evolution:
+        R_evolution = np.zeros((opt_steps, system.N, 2))
+        R_evolution = R_evolution.at[0].set(R_temp)
+        k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
+        k_evolution = k_evolution.at[0].set(k_temp)
+
+    exit_flag = 0
+    
+    # Get initial bandgap state
+    result = forbidden_states_initial(R_temp, k_temp, system)
+    bandgap_bias = utils.gap_objective(result.frequency_init, w_c, k_fit)
+    print('Initial forbidden states:', result.forbidden_states_init)
+    print('Initial bandgap bias:', bandgap_bias)
+
+    # Setup optimization functions
+    acoustic_function = acoustic_initial_wrapper(system, w_c, k_fit)
+    grad_acoustic_R = jit(grad(acoustic_function, argnums=0))
+    grad_acoustic_k = jit(grad(acoustic_function, argnums=1))
+
+    print("Step", "max_grad", "bandgap", "energy_penalty", "stiffness_penalty")
+
+    for i in range(opt_steps):
+        gc.collect()
+
+        # Update learning rates
+        current_lr = initial_lr * (lr_decay ** i)
+        current_position_lr = current_lr / 2
+        
+        # Calculate gradients
+        gradients_R = grad_acoustic_R(R_temp, k_temp)
+        gradients_k = grad_acoustic_k(R_temp, k_temp)
+
+        # Normalize gradients using L2 norm
+        gradients_R = utils.normalize_gradients(gradients_R)
+        gradients_k = utils.normalize_gradients(gradients_k)
+
+        gradient_max = np.max(np.abs(np.vstack((gradients_k, gradients_R.ravel()[:, np.newaxis]))))
+
+        # Clip gradients if needed
+        if gradient_max > gradient_clip:
+            scale = gradient_clip / (gradient_max + 1e-8)
+            gradients_R *= scale
+            gradients_k *= scale
+
+        # Check stability
+        is_stable, instability_message = check_numerical_stability(
+            R_temp, k_temp, gradients_R, gradients_k, 0.0, 0.0)
+        
+        if not is_stable:
+            print(f'Early stopping due to numerical instability: {instability_message}')
+            exit_flag = 5
+            break
+
+        if np.any(np.abs(R_temp) > stability_threshold) or np.any(np.abs(k_temp) > stability_threshold):
+            print('Early stopping due to network instability')
+            exit_flag = 2
+            break
+
+        # Update positions and spring constants
+        k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate=current_lr)
+        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp, current_position_lr)
+        
+        # Calculate current state
+        result = forbidden_states_initial(R_temp, k_temp, system)
+        bandgap_contrast = acoustic_function(R_temp, k_temp)
+        current_loss = bandgap_contrast + energies.penalty_energy(R_temp, system) / system.penalty_scale
+
+        # Check convergence conditions
+        if gradient_max < min_gradient_norm:
+            print('Early stopping due to small gradients')
+            exit_flag = 4
+            break
+        elif gradient_max > 100 * gradient_clip:  # Allow some margin above clip threshold
+            print(f'Early stopping due to excessive gradients: {gradient_max:.2e}')
+            exit_flag = 7
+            break
+
+        if abs(current_loss - best_loss) < 1e-5:
+            plateau_counter += 1
+            if plateau_counter >= plateau_patience:
+                print('Early stopping due to loss plateau')
+                exit_flag = 1
+                break
+        else:
+            plateau_counter = 0
+            best_loss = current_loss
+
+        # Check success criteria
+        if (result.forbidden_states_init == 0):  # No forbidden states
+            print('Optimization converged successfully')
+            exit_flag = 3
+            break
+
+        print(f"Step {i}: grad={(gradient_max):.3f}, "
+              f"bandgap={(bandgap_contrast):.3f}, "
+              f"forbidden_states_init={result.forbidden_states_init}, "
+              f"penalty={(energies.penalty_energy(R_temp, system)):.3f}, "
+              f"stiffness={(utils.stiffness_penalty(system, k_temp)):.3f}")
+        
+        # Update evolution tracking
+        if output_evolution:
+            R_evolution = R_evolution.at[i].set(R_temp)
+            k_evolution = k_evolution.at[i].set(k_temp)
+
+    # Save results
+    np.savez(str(run), 
+             R_temp=R_temp, 
+             k_temp=k_temp,
+             connectivity=system.E,
+             surface_nodes=system.surface_nodes,
+             bandgap_contrast=bandgap_contrast, 
+             forbidden_states_init=result.forbidden_states_init,
+             exit_flag=exit_flag)
+    
+    gc.collect()
+             
+    if output_evolution:
+        evolution_log = {'position': R_evolution, 'bond_strengths': k_evolution}
+        return evolution_log, result.forbidden_states_init, bandgap_contrast, exit_flag, R_temp, k_temp, system
+    return result.forbidden_states_init, bandgap_contrast, exit_flag, R_temp, k_temp, system
+
+def forbidden_states_initial(R, k_bond, system):
+    """
+    Get the forbidden modes in the initial state.
+    """
+    C_init = create_compatibility(system, R)
+    D_init, V_init, forbidden_states_init, frequency_init = get_forbidden_states(C_init, k_bond, system)
+    return Result_initial_modes(
+        D_init=D_init,
+        V_init=V_init,
+        C_init=C_init,
+        forbidden_states_init=forbidden_states_init,
+        frequency_init=frequency_init,
+        R_init=R
+    )
+
+def acoustic_initial_wrapper(system, w_c, k_fit):
+    """
+    Wrapper for the acoustic objective function in the initial state.
+    """
+    def acoustic_initial_grad(R, k_bond):
+        result = forbidden_states_initial(R, k_bond, system)
+        fit_init = utils.gap_objective(result.frequency_init, w_c, k_fit)
+        return fit_init + energies.penalty_energy(R, system) / system.penalty_scale
+    return acoustic_initial_grad
+
+def generate_auxetic_acoustic_adaptive_initial(
+    run, system, perturbation, w_c, dw, poisson_target, opt_steps, output_evolution=False,
+    initial_lr=0.02, lr_decay=0.995, gradient_clip=1.0, stability_threshold=1e3
+):
+    """
+    A combination version that uses a wrapper that implicitly combines scaled objectives.
+
+    Args:
+        run: Run id, also used as random seed.
+        system: Pre-initialized system object containing the initial structure.
+        perturbation: Absolute value of perturbation of the network for compression.
+        w_c: Frequency center.
+        dw: Width of the bandgap.
+        poisson_target: The aimed value for the Poisson ratio.
+        opt_steps: Number of optimization steps.
+        output_evolution: Whether to output evolution data.
+        initial_lr: Initial learning rate.
+        lr_decay: Learning rate decay factor per iteration.
+        gradient_clip: Maximum allowed gradient magnitude.
+        stability_threshold: Threshold for detecting unstable configurations.
+    """
+    # Parameters
+    steps = 50
+    write_every = 1
+    delta_perturbation = 0.1
+    nr_trials = 500
+    ageing_rate = 0.1
+    success_frac = 0.05
+    k_fit = 2.0 / (dw**2)
+
+    # Add early stopping parameters
+    plateau_patience = 10  # Number of iterations to wait before early stopping
+    plateau_counter = 0
+    best_loss = float('inf')
+    min_gradient_norm = 1e-10  # Minimum gradient norm before stopping
+
+    # Use the pre-initialized system object
+    system.acoustic_parameters(w_c, dw, nr_trials, ageing_rate, success_frac)
+    system.auxetic_parameters(perturbation, delta_perturbation, steps, write_every)
+    displacement = system.displacement
+    shift = system.shift
+    R = system.X
+    k_bond = system.spring_constants
+
+    # Minimizing the initial configuration
+    _, R, _ = simulate_minimize_penalty(R, k_bond, system, shift, displacement)
+
+    system.X = R
     displacement = system.displacement
     system.create_spring_constants()
     system.calculate_initial_angles_method(displacement)
@@ -1338,142 +1834,175 @@ def generate_auxetic_acoustic_shift(run, number_of_nodes_per_side, k_angle, pert
     k_temp = k_bond
 
     if output_evolution:
-        #set up evolution bits
         R_evolution = np.zeros((opt_steps, system.N, 2))
         R_evolution = R_evolution.at[0].set(R_temp)
         k_evolution = np.zeros((opt_steps, k_temp.shape[0], 1))
         k_evolution = k_evolution.at[0].set(k_temp)
 
-
-    k_fit_closed = 2.0/(width_closed**2) 
-    k_fit_opened = 2.0/(width_opened**2) 
-    
-    exit_flag=0
-    
+    exit_flag = 0
     """
     0: max steps reached
+    1: early stopping due to plateau
     2: max k_temp exceeded
     3: converged
-    
+    4: early stopping due to small gradients
+    5: numerical instability detected
     """
-    
-    bandgap_contrast = 0
-    
-    result = forbidden_states_compression(R_temp, 
-                                          k_temp, 
-                                          system, 
-                                          shift, 
-                                          displacement)
-    
+
+    result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
+
     poisson = result.poisson
-    poisson_bias = np.abs(poisson-poisson_target)
+    poisson_bias = np.abs(poisson - poisson_target)
 
+    forbidden_states_init = result.forbidden_states_init
+    forbidden_states_final = result.forbidden_states_final
+    bandgap_bias = utils.gap_objective(result.frequency_init, system.frequency_center, k_fit)
 
-    closed_contrast_ratio = utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed) / utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed) 
-    opened_contrast_ratio = utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened) / utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)
+    print('initial forbidden states: ', forbidden_states_init, bandgap_bias)
 
-    #define distances
-    poisson_distance = (poisson - poisson_target) / poisson_bias
-    bandgap_distance = 0.5 * (closed_contrast_ratio + opened_contrast_ratio)
+    adaptive_function = acoustic_auxetic_adaptive_wrapper(
+        system, shift, displacement, k_fit, bandgap_bias, poisson_target, poisson_bias
+    )
 
-    
-    print(" Contrasts:   Closed,   Opened" )
-    print('initial : ', utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed), utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)) 
-    print('final   : ', utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed),  utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened))
-    print("Step", "max_grad", "bandgap_distance", "poisson_distance",  "closed_contrast_ratio" , "opened_contrast_ratio" , "poisson", "energy_penalty", "stiffness penalty")
-    # acoustic functions
-    acoustic_function = acoustic_bandgap_shift_wrapper(system, shift, displacement, frequency_closed, width_closed, frequency_opened, width_opened)
-    
-    grad_acoustic_R = jit(grad(acoustic_function, argnums=0))
-    grad_acoustic_k = jit(grad(acoustic_function, argnums=1))
-        
-    #auxetic_functions
-    
-    auxetic_function = simulate_auxetic_wrapper(R, k_bond, system,shift,displacement)
-    grad_auxetic_R = jit(grad(auxetic_function, argnums=0))
-    grad_auxetic_k = jit(grad(auxetic_function, argnums=1))
-    
+    grad_adaptive_R = jit(grad(adaptive_function, argnums=0))
+    grad_adaptive_k = jit(grad(adaptive_function, argnums=1))
+
+    def check_network_stability(R, k, threshold):
+        """Check if network configuration is becoming unstable."""
+        if np.any(np.abs(R) > threshold) or np.any(np.abs(k) > threshold):
+            return False, "Network configuration exceeds stability threshold"
+        return True, ""
+
+    print("Step", "max_grad", "bandgap_distance", "poisson_distance", "forbidden_states_init", "forbidden_states_final", "poisson", "energy_penalty", "stiffness penalty")
 
     for i in range(opt_steps):
-    
-        #acoustic gradients
-        gradients_acoustic_k = grad_acoustic_k(R_temp, k_temp)
-        gradients_acoustic_R = grad_acoustic_R(R_temp, k_temp)
-    
-        #auxetic gradients
-        gradients_auxetic_k = grad_auxetic_k(R_temp, k_temp)
-        gradients_auxetic_R = grad_auxetic_R(R_temp, k_temp)        
-        
-        #evaluate maximum gradients for diagnostics only
-        gradient_max = np.max( np.abs( np.vstack((gradients_auxetic_k, 
-                                                  gradients_auxetic_R.ravel()[:, np.newaxis], 
-                                                  gradients_acoustic_k, 
-                                                  gradients_acoustic_R.ravel()[:, np.newaxis] ))))
+        # Clear memory before heavy computations
+        gc.collect()
 
-    
-        #normalize gradients 
-        gradients_auxetic_k = utils.normalize_gradients(gradients_auxetic_k)
-        gradients_auxetic_R = utils.normalize_gradients(gradients_auxetic_R)
-        
-        gradients_acoustic_k = utils.normalize_gradients(gradients_acoustic_k)
-        gradients_acoustic_R = utils.normalize_gradients(gradients_acoustic_R)
+        # Decay learning rate
+        current_lr = initial_lr * (lr_decay**i)
+        current_position_lr = current_lr / 2  # Position updates use half the learning rate
 
+        gradients_R = grad_adaptive_R(R_temp, k_temp)
+        gradients_k = grad_adaptive_k(R_temp, k_temp)
 
-        #calculate weighted gradients
-        gradients_k = poisson_distance*gradients_auxetic_k + bandgap_distance*gradients_acoustic_k
-        gradients_R = poisson_distance*gradients_auxetic_R + bandgap_distance*gradients_acoustic_R
-        
-        
-        k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate = 0.02)
-        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp, 0.01)
-    
+        gradient_max = np.max(np.abs(np.vstack((gradients_k, gradients_R.ravel()[:, np.newaxis]))))
+
+        # Clip gradients if they exceed threshold
+        if gradient_max > gradient_clip:
+            scale = gradient_clip / (gradient_max + 1e-8)  # Add small epsilon to avoid division by zero
+            gradients_R *= scale
+            gradients_k *= scale
+
+        # Check numerical stability before updates
+        is_stable, instability_message = check_numerical_stability(
+            R_temp, k_temp, gradients_R, gradients_k,
+            poisson_distance if i > 0 else 0.0,
+            bandgap_distance if i > 0 else 0.0
+        )
+
+        if not is_stable:
+            print(f'Early stopping due to numerical instability: {instability_message}')
+            exit_flag = 5
+            break
+
+        # Check network configuration stability
+        is_network_stable, network_message = check_network_stability(R_temp, k_temp, stability_threshold)
+        if not is_network_stable:
+            print(f'Early stopping due to network instability: {network_message}')
+            exit_flag = 6
+            break
+
+        # Update with adaptive learning rates
+        k_temp = utils.update_kbonds(gradients_k, k_temp, learning_rate=current_lr)
+        R_temp = utils.update_R(system.surface_mask, gradients_R, R_temp, current_position_lr)
+
         result = forbidden_states_compression(R_temp, k_temp, system, shift, displacement)
-    
-        #extract the progress
+
+        # [Extract progress and calculate metrics - same as before]
         poisson = result.poisson
-    
-        closed_contrast_ratio = utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed) / utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed) 
-        opened_contrast_ratio = utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened) / utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)
-    
-        #define distances
-        poisson_distance = (poisson - poisson_target) / poisson_bias
-        bandgap_distance = 0.5 * (closed_contrast_ratio + opened_contrast_ratio)
-    
-        
-        if np.abs(poisson_distance) < 0.02 and bandgap_distance < 0.05: 
+        forbidden_states_init = result.forbidden_states_init
+        forbidden_states_final = result.forbidden_states_final
+
+        fit_init = utils.gap_objective(result.frequency_init, system.frequency_center, k_fit)
+        fit_final = utils.gap_objective(result.frequency_final, system.frequency_center, k_fit)
+
+        poisson_distance = (result.poisson - poisson_target) / poisson_bias
+        bandgap_distance = (fit_final / bandgap_bias)**2 + (1 - (fit_init) / bandgap_bias)**2
+
+        # Second stability check after updates
+        is_stable, instability_message = check_numerical_stability(
+            R_temp, k_temp, gradients_R, gradients_k,
+            poisson_distance, bandgap_distance
+        )
+
+        if not is_stable:
+            print(f'Early stopping due to numerical instability: {instability_message}')
+            exit_flag = 5
+            break
+
+        # Check for small gradients using clipped gradient magnitude
+        if gradient_max < min_gradient_norm:
+            print('Early stopping due to small gradients')
+            exit_flag = 4
+            break
+
+        # Calculate current loss with improved stability
+        current_loss = bandgap_distance + poisson_distance**2
+
+        # Plateau detection with improved numerical stability
+        if abs(current_loss - best_loss) < 1e-5:
+            plateau_counter += 1
+        else:
+            plateau_counter = 0
+            if current_loss < best_loss:
+                best_loss = current_loss
+
+        if plateau_counter >= plateau_patience:
+            print('Early stopping due to plateau')
+            exit_flag = 1
+            break
+
+        # Convergence check with additional conditions
+        if (np.abs(poisson_distance) < 0.05 and
+            bandgap_distance < 0.25 and
+            forbidden_states_final == 0 and
+            abs(forbidden_states_init - forbidden_states_final) > 10):
             print('converged')
             exit_flag = 3
             break
-    
-        
-        print(i, gradient_max, bandgap_distance, poisson_distance,  closed_contrast_ratio, opened_contrast_ratio, poisson, energies.penalty_energy(R_temp, system), utils.stiffness_penalty(system, k_temp))
+
+        print(i, gradient_max, bandgap_distance, poisson_distance, forbidden_states_init,
+              forbidden_states_final, poisson, energies.penalty_energy(R_temp, system),
+              utils.stiffness_penalty(system, k_temp))
+
+        # Clear gradients after use
+        del gradients_R
+        del gradients_k
+        gc.collect()
 
         if output_evolution:
-            #set evolution bits for the network
-            R_evolution = R_evolution.at[i+1].set(R_temp)
-            k_evolution = k_evolution.at[i+1].set(k_temp)
+            R_evolution = R_evolution.at[i + 1].set(R_temp)
+            k_evolution = k_evolution.at[i + 1].set(k_temp)
 
+    np.savez(str(run),
+             R_temp=R_temp,
+             k_temp=k_temp,
+             poisson=poisson,
+             poisson_target=poisson_target,
+             perturbation=perturbation,
+             connectivity=system.E,
+             surface_nodes=system.surface_nodes,
+             bandgap_distance=bandgap_distance,
+             forbidden_states_init=result.forbidden_states_init,
+             forbidden_states_final=result.forbidden_states_final,
+             exit_flag=exit_flag)
 
-    closed_contrasts = [utils.gap_objective(result.frequency_init, frequency_closed, k_fit_closed), utils.gap_objective(result.frequency_final, frequency_closed, k_fit_closed)]
-    opened_contrasts = [utils.gap_objective(result.frequency_final, frequency_opened, k_fit_opened), utils.gap_objective(result.frequency_init, frequency_opened, k_fit_opened)]
-
-    np.savez(str(run), 
-             R_temp = R_temp, 
-             k_temp = k_temp, 
-             connectivity = system.E,
-             surface_nodes = system.surface_nodes,
-             poisson = poisson, 
-             poisson_target = poisson_target,
-             bandgap_distance = bandgap_distance, 
-             closed_contrast_ratio = closed_contrast_ratio,
-             opened_contrast_ratio = opened_contrast_ratio,
-             closed_contrasts = closed_contrasts,
-             opened_contrasts = opened_contrasts,
-             forbidden_states_final = result.forbidden_states_final,
-             exit_flag = exit_flag)
+    # Clear any remaining temporary variables
+    gc.collect()
 
     if output_evolution:
-        evolution_log = {'position' : R_evolution, 'bond_strengths' : k_evolution}
-        return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result , evolution_log
-    else: 
+        evolution_log = {'position': R_evolution, 'bond_strengths': k_evolution}
+        return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result, evolution_log
+    else:
         return poisson_distance, bandgap_distance, exit_flag, R_temp, k_temp, system, shift, displacement, result
