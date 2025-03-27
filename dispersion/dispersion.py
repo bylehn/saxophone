@@ -62,7 +62,6 @@ class GetBranchedBro:
         else:
             D, V = scla.eig(DMAT)
             D = np.sort(D)
-        V = np.real(V)
         return D, V
 
     def create_q_path(self, qx_i, qx_f, qy_i, qy_f, num_points):
